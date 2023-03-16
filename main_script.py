@@ -8,6 +8,7 @@ import multiprocessing as mp
 from mhe.ocp import *
 from mhe.utils import *
 from biosiglive.gui.plot import LivePlot
+from pathlib import Path
 
 
 class MuscleForceEstimator:
@@ -313,11 +314,12 @@ class MuscleForceEstimator:
 
 
 if __name__ == "__main__":
-    data_dir = f"/home/amedeoceglia/Documents/programmation/code_paper_mhe_data/data_final_new/subject_3/C3D/"
-    result_dir = "results/results_w9/"
+    data_dir = f"/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/trials/"
+    result_dir = "results/results_w9"
     trials = [
-        "data_abd_sans_poid",
-        "data_abd_poid_2kg",
+        "data_pedalage_1.bio"
+        # "data_abd_sans_poid.bio",
+        # "data_abd_poid_2kg.bio",
         # "data_cycl_poid_2kg",
         # "data_flex_poid_2kg",
         # "data_flex_sans_poid",
@@ -325,23 +327,23 @@ if __name__ == "__main__":
     ]
     # configs = [0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12]
     # exp_freq = [43, 38, 37, 34, 29, 27, 25, 24, 22]
-    configs = [0.07]
+    configs = [0.08]
     exp_freq = [30]
     for c, config in enumerate(configs):
         for trial in trials:
             offline_path = data_dir + f"{trial}"
-            file_name = f"{trial}_result_duration_{config}"
+            file_name = f"{Path(trial).stem}_result_duration_{config}.bio"
 
             solver_options = {
                 "sim_method_jac_reuse": 1,
                 "levenberg_marquardt": 50.0,
                 "nlp_solver_step_length": 0.9,
-                "qp_solver_iter_max": 500,
+                "qp_solver_iter_max": 1, #1000,
             }
             if "2k" in trial:
-                model = f"data/wu_scaled_2kg.bioMod"
+                model = f"results/wu_gauche_cycling_pos_scaled_3.bioMod"
             else:
-                model = f"data/wu_scaled.bioMod"
+                model = f"results/wu_gauche_cycling_pos_scaled_3.bioMod"
 
             configuration_dic = {
                 "model_path": model,
@@ -349,35 +351,35 @@ if __name__ == "__main__":
                 "interpol_factor": 2,
                 "use_torque": True,
                 "save_results": True,
-                "track_emg": True,
+                "track_emg": False,
                 "kin_data_to_track": "markers",
                 "exp_freq": exp_freq[c],
                 "muscle_track_idx": [
-                    14,
+                    19,
+                    18,
+                    17,
                     23,
-                    24,  # MVC Pectoralis sternalis
-                    13,  # MVC Deltoid anterior
-                    15,  # MVC Deltoid medial
-                    16,  # MVC Deltoid posterior
+                    11,
+                    1,
+                    2,
                     26,
-                    27,  # MVC Biceps brachii
                     28,
                     29,
-                    30,  # MVC Triceps brachii
-                    11,
-                    1,  # MVC Trapezius superior bis
-                    2,  # MVC Trapezius medial
-                    3,  # MVC Trapezius inferior
-                    25,  # MVC Latissimus dorsi
+                    27,
+                    30,
+                    25,
+                    13,
+                    15,
+                    16,
                 ],
                 "result_dir": result_dir,
                 "result_file_name": file_name,
                 "solver_options": solver_options,
                 "weights": configure_weights(),
                 "frame_to_save": 0,
-                "save_all_frame": True,
+                "save_all_frame": False,
             }
-            variables_dic = {"print_lvl": 1}  # print level 0 = no print, 1 = print information
+            variables_dic = {"print_lvl": 0}  # print level 0 = no print, 1 = print information
             data_to_show = None  # ["q", "force"]
             server_ip = "192.168.1.211"
             server_port = 50000

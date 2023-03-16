@@ -278,7 +278,7 @@ def prepare_problem(
     dynamics = DynamicsList()
     dynamics.add(
         DynamicsFcn.MUSCLE_DRIVEN,
-        dynamic_function=custom_muscles_driven,
+        # dynamic_function=custom_muscles_driven,
         # dynamic_function=custom_dynamic,
         with_excitations=False,
         with_torque=use_torque,
@@ -292,16 +292,16 @@ def prepare_problem(
     # State path constraint
     x_bounds = BoundsList()
     x_bounds.add(bounds=biorbd_model.bounds_from_ranges(["q", "qdot"]))
-    x_bounds[0].min[: biorbd_model.nb_q, 0] = [i - 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
-    x_bounds[0].max[: biorbd_model.nb_q, 0] = [i + 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
-    x_bounds[0].min[biorbd_model.nb_q : biorbd_model.nb_q * 2, 0] = [
-        i - 0.1 * i for i in x_0[biorbd_model.nb_q :, 0]
-    ]
-    x_bounds[0].max[biorbd_model.nb_q : biorbd_model.nb_q * 2, 0] = [
-        i + 0.1 * i for i in x_0[biorbd_model.nb_q :, 0]
-    ]
-    x_bounds[0].min[biorbd_model.nb_q : biorbd_model.nb_q * 2, [1, -1]] = [[-5] * 2] * biorbd_model.nb_q
-    x_bounds[0].max[biorbd_model.nb_q : biorbd_model.nb_q * 2, [1, -1]] = [[5] * 2] * biorbd_model.nb_q
+    # x_bounds[0].min[: biorbd_model.nb_q, 0] = [i - 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
+    # x_bounds[0].max[: biorbd_model.nb_q, 0] = [i + 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
+    # x_bounds[0].min[biorbd_model.nb_q : biorbd_model.nb_q * 2, 0] = [
+    #     i - 0.1 * i for i in x_0[biorbd_model.nb_q :, 0]
+    # ]
+    # x_bounds[0].max[biorbd_model.nb_q : biorbd_model.nb_q * 2, 0] = [
+    #     i + 0.1 * i for i in x_0[biorbd_model.nb_q :, 0]
+    # ]
+    # x_bounds[0].min[biorbd_model.nb_q : biorbd_model.nb_q * 2, [1, -1]] = [[-5] * 2] * biorbd_model.nb_q
+    # x_bounds[0].max[biorbd_model.nb_q : biorbd_model.nb_q * 2, [1, -1]] = [[5] * 2] * biorbd_model.nb_q
 
     u_bounds = Bounds(
         [tau_min] * nbGT + [muscle_min] * biorbd_model.nb_muscles,
@@ -339,8 +339,12 @@ def prepare_problem(
     )
     solver = Solver.ACADOS()
     solver.set_integrator_type("IRK")
+    # solver.set_integrator_type("ERK")
+
     solver.set_qp_solver("PARTIAL_CONDENSING_OSQP")
     solver.set_nlp_solver_type("SQP_RTI")
+    # solver.set_nlp_solver_type("SQP")
+
     solver.set_print_level(0)
     for key in solver_options.keys():
         solver.set_option_unsafe(val=solver_options[key], name=key)
@@ -820,7 +824,6 @@ class CustomMhe(MovingHorizonEstimator):
     def _initialize_solution(self, states: list, controls: list):
         _states = InitialGuess(np.concatenate(states, axis=1), interpolation=InterpolationType.EACH_FRAME)
         _controls = InitialGuess(np.concatenate(controls, axis=1), interpolation=InterpolationType.EACH_FRAME)
-
         solution_ocp = OptimalControlProgram(
             bio_model=self.original_values["bio_model"][0],
             dynamics=self.original_values["dynamics"][0],
