@@ -292,16 +292,16 @@ def prepare_problem(
     # State path constraint
     x_bounds = BoundsList()
     x_bounds.add(bounds=biorbd_model.bounds_from_ranges(["q", "qdot"]))
-    # x_bounds[0].min[: biorbd_model.nb_q, 0] = [i - 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
-    # x_bounds[0].max[: biorbd_model.nb_q, 0] = [i + 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
-    # x_bounds[0].min[biorbd_model.nb_q : biorbd_model.nb_q * 2, 0] = [
-    #     i - 0.1 * i for i in x_0[biorbd_model.nb_q :, 0]
-    # ]
-    # x_bounds[0].max[biorbd_model.nb_q : biorbd_model.nb_q * 2, 0] = [
-    #     i + 0.1 * i for i in x_0[biorbd_model.nb_q :, 0]
-    # ]
-    # x_bounds[0].min[biorbd_model.nb_q : biorbd_model.nb_q * 2, [1, -1]] = [[-5] * 2] * biorbd_model.nb_q
-    # x_bounds[0].max[biorbd_model.nb_q : biorbd_model.nb_q * 2, [1, -1]] = [[5] * 2] * biorbd_model.nb_q
+    x_bounds[0].min[: biorbd_model.nb_q, 0] = [i - 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
+    x_bounds[0].max[: biorbd_model.nb_q, 0] = [i + 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
+    x_bounds[0].min[biorbd_model.nb_q : biorbd_model.nb_q * 2, 0] = [
+        i - 0.1 * i for i in x_0[biorbd_model.nb_q :, 0]
+    ]
+    x_bounds[0].max[biorbd_model.nb_q : biorbd_model.nb_q * 2, 0] = [
+        i + 0.1 * i for i in x_0[biorbd_model.nb_q :, 0]
+    ]
+    x_bounds[0].min[biorbd_model.nb_q : biorbd_model.nb_q * 2, [1, -1]] = [[-5] * 2] * biorbd_model.nb_q
+    x_bounds[0].max[biorbd_model.nb_q : biorbd_model.nb_q * 2, [1, -1]] = [[5] * 2] * biorbd_model.nb_q
 
     u_bounds = Bounds(
         [tau_min] * nbGT + [muscle_min] * biorbd_model.nb_muscles,

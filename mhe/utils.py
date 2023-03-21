@@ -268,7 +268,7 @@ def get_data(ip=None, port=None, message=None, offline=False, offline_file_path=
             except:
                 x_ref, markers, muscles = (
                     mat["kalman"][:, n_init:nfinal],
-                    mat["markers"][:, 4:, n_init:nfinal],
+                    mat["markers"][:, :, n_init:nfinal],
                     mat["emg_proc"][:, n_init:nfinal],
                 )
         return x_ref, markers, muscles

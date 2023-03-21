@@ -314,11 +314,12 @@ class MuscleForceEstimator:
 
 
 if __name__ == "__main__":
-    data_dir = f"/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/trials/"
+    idx_trial = 1
+    data_dir = f"/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/data_gen/saves/"
     result_dir = "results/results_w9"
     trials = [
-        "data_pedalage_1.bio"
-        # "data_abd_sans_poid.bio",
+        f"pedalage_{idx_trial}_proc.bio"
+        # "data_pedalage_1.bio",
         # "data_abd_poid_2kg.bio",
         # "data_cycl_poid_2kg",
         # "data_flex_poid_2kg",
@@ -338,12 +339,10 @@ if __name__ == "__main__":
                 "sim_method_jac_reuse": 1,
                 "levenberg_marquardt": 50.0,
                 "nlp_solver_step_length": 0.9,
-                "qp_solver_iter_max": 1, #1000,
+                "qp_solver_iter_max": 1000,
             }
-            if "2k" in trial:
-                model = f"results/wu_gauche_cycling_pos_scaled_3.bioMod"
-            else:
-                model = f"results/wu_gauche_cycling_pos_scaled_3.bioMod"
+
+            model = f"results/wu_gauche_cycling_pos_scaled_{idx_trial}.bioMod"
 
             configuration_dic = {
                 "model_path": model,
@@ -351,7 +350,7 @@ if __name__ == "__main__":
                 "interpol_factor": 2,
                 "use_torque": True,
                 "save_results": True,
-                "track_emg": False,
+                "track_emg": True,
                 "kin_data_to_track": "markers",
                 "exp_freq": exp_freq[c],
                 "muscle_track_idx": [
