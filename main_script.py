@@ -76,17 +76,24 @@ class MuscleForceEstimator:
         self.init_n = 0
         self.final_n = None
         self.result_file_name = None
-        self.markers_target, self.muscles_target, self.x_ref, self.kin_target = None, None, None, None
+        self.markers_target, self.muscles_target, self.x_ref, self.kin_target, self.f_ext_target = None, None, None, None, None
         self.n_loop = 0
         self.mhe, self.solver, self.get_force, self.force_est = None, None, None, None
         self.model = None
         self.b = None
         self.frame_to_save = 0
         self.save_all_frame = True
+        self.with_f_ext = False
+        self.f_ext_as_constraints = False
 
         # Use the configuration dictionary to initialize the muscle force estimator parameters
         for key in conf.keys():
             self.__dict__[key] = conf[key]
+
+        if self.f_ext_as_constraints and self.with_f_ext is False:
+            raise RuntimeError(
+                "we must have with_f_ext True to use constraints"
+            )
 
         self.T_mhe = self.mhe_time
         self.ns_mhe = int(self.T_mhe * self.markers_rate * self.interpol_factor)
@@ -117,9 +124,11 @@ class MuscleForceEstimator:
         self.data_to_get = []
         self.data_to_get.append("markers")
         self.data_to_get.append("emg")
+        if self.with_f_ext:
+            self.data_to_get.append("f_ext")
         if self.test_offline:
-            x_ref, markers_target, muscles_target = get_data(offline=True, offline_file_path=self.offline_file)
-            self.offline_data = [x_ref, markers_target, muscles_target]
+            x_ref, markers_target, muscles_target, f_ext_target = get_data(offline=True, offline_file_path=self.offline_file)
+            self.offline_data = [x_ref, markers_target, muscles_target, f_ext_target]
 
         else:
             nb_of_data = int(self.ns_mhe / self.interpol_factor) + 1
@@ -135,15 +144,21 @@ class MuscleForceEstimator:
             x_ref = np.array(data["kalman"])
             markers_target = np.array(data["markers"])[:, :, :]
             muscles_target = np.array(data["emg_proc"])
+            if self.with_f_ext:
+                f_ext_target = np.array(data["f_ext"])
+            else:
+                f_ext_target = None
 
         window_len = self.ns_mhe
         window_duration = self.T_mhe
-        self.x_ref, self.markers_target, muscles_target = interpolate_data(
-            self.interpol_factor, x_ref, muscles_target, markers_target
+
+        self.x_ref, self.markers_target, muscles_target, self.f_ext_target = interpolate_data(
+            self.interpol_factor, x_ref, muscles_target, markers_target, f_ext_target,
         )
         self.muscles_target = muscle_mapping(
             muscles_target_tmp=muscles_target, muscle_track_idx=self.muscle_track_idx, mvc_list=self.mvc_list
         )[:, :window_len]
+        self.f_ext_target = self.f_ext_target.T[:, :window_len, 0]
         self.kin_target = (
             self.markers_target[:, :, : window_len + 1]
             if self.kin_data_to_track == "markers"
@@ -163,12 +178,20 @@ class MuscleForceEstimator:
         for i in self.muscle_track_idx:
             muscle_init[i, :] = self.muscles_target[count, : self.ns_mhe]
             count += 1
-        u0 = np.concatenate((muscle_init, np.zeros((biorbd_model.nb_q, self.ns_mhe))))
+        f_ext_init = np.zeros((6, self.ns_mhe))
+        f_ext_init[:, :] = self.f_ext_target[:, : self.ns_mhe]
+        if self.with_f_ext:
+            u0 = np.concatenate((muscle_init, np.zeros((biorbd_model.nb_q, self.ns_mhe)), f_ext_init))
+        else:
+            u0 = np.concatenate((muscle_init, np.zeros((biorbd_model.nb_q, self.ns_mhe))))
         objectives = define_objective(
             weights=self.weights,
             use_torque=self.use_torque,
+            with_f_ext=self.with_f_ext,
+            f_ext_as_constraints=self.f_ext_as_constraints,
             track_emg=self.track_emg,
             muscles_target=self.muscles_target,
+            f_ext_target=self.f_ext_target,
             kin_target=self.kin_target,
             biorbd_model=biorbd_model,
             previous_sol=previous_sol,
@@ -176,14 +199,24 @@ class MuscleForceEstimator:
             muscle_track_idx=self.muscle_track_idx,
         )
 
+        constraints = define_constraint(
+            f_ext_target=self.f_ext_target,
+            with_f_ext=self.with_f_ext,
+            f_ext_as_constraints=self.f_ext_as_constraints,
+        )
+
         self.mhe, self.solver = prepare_problem(
             self.model_path,
             objectives,
+            constraints,
             window_len=window_len,
             window_duration=window_duration,
             x0=self.x_ref,
             u0=u0,
+            f_ext_0=self.f_ext_target,
             use_torque=self.use_torque,
+            with_f_ext=self.with_f_ext,
+            f_ext_as_constraints=self.f_ext_as_constraints,
             nb_threads=8,
             solver_options=self.solver_options,
             use_acados=True,
@@ -314,7 +347,7 @@ class MuscleForceEstimator:
 
 
 if __name__ == "__main__":
-    idx_trial = 1
+    idx_trial = 3
     data_dir = f"/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/data_gen/saves/"
     result_dir = "results/results_w9"
     trials = [
@@ -334,6 +367,8 @@ if __name__ == "__main__":
         for trial in trials:
             offline_path = data_dir + f"{trial}"
             file_name = f"{Path(trial).stem}_result_duration_{config}.bio"
+            if os.path.isfile(f'results/results_w9/{file_name}'):
+                os.remove(f'results/results_w9/{file_name}')
 
             solver_options = {
                 "sim_method_jac_reuse": 1,
@@ -351,6 +386,8 @@ if __name__ == "__main__":
                 "use_torque": True,
                 "save_results": True,
                 "track_emg": True,
+                "with_f_ext": False,
+                "f_ext_as_constraints": False,
                 "kin_data_to_track": "markers",
                 "exp_freq": exp_freq[c],
                 "muscle_track_idx": [

@@ -11,6 +11,7 @@ import datetime
 from scipy.interpolate import interp1d
 import os
 import scipy.io as sio
+import matplotlib.pyplot as plt
 
 
 def check_and_adjust_dim(*args):
@@ -47,7 +48,7 @@ def update_plot(estimator_instance, force_est: np.ndarray, q_est: np.ndarray, in
     absolute_delay_plot = 0
     if estimator_instance.data_to_show.count("force") != 0:
         estimator_instance.force_to_plot = np.append(
-            estimator_instance.force_to_plot[:, -estimator_instance.exp_freq - 1 :], force_est, axis=1
+            estimator_instance.force_to_plot[:, -estimator_instance.exp_freq - 1:], force_est, axis=1
         )
         estimator_instance.all_plot.update_plot_window(
             estimator_instance.all_plot.plot[0],
@@ -112,9 +113,9 @@ def compute_force(
         )
     force_est = np.zeros((nbmt, slide_size))
     if not save_all_frame:
-        q_est = sol.states["q"][:, frame_to_save : frame_to_save + slide_size]
-        dq_est = sol.states["qdot"][:, frame_to_save : frame_to_save + slide_size]
-        a_est = sol.controls["muscles"][:, frame_to_save : frame_to_save + slide_size]
+        q_est = sol.states["q"][:, frame_to_save: frame_to_save + slide_size]
+        dq_est = sol.states["qdot"][:, frame_to_save: frame_to_save + slide_size]
+        a_est = sol.controls["muscles"][:, frame_to_save: frame_to_save + slide_size]
     else:
         q_est = sol.states["q"]
         dq_est = sol.states["qdot"]
@@ -208,7 +209,7 @@ def muscle_mapping(muscles_target_tmp: np.ndarray, muscle_track_idx: list, mvc_l
     return muscles_target
 
 
-def interpolate_data(interp_factor: int, x_ref: np.ndarray, muscles_target: np.ndarray, markers_target: np.ndarray):
+def interpolate_data(interp_factor: int, x_ref: np.ndarray, muscles_target: np.ndarray, markers_target: np.ndarray, f_ext_target: np.ndarray):
     """
     Interpolate the reference and target data.
 
@@ -248,9 +249,19 @@ def interpolate_data(interp_factor: int, x_ref: np.ndarray, muscles_target: np.n
         f_mus = interp1d(x, muscles_target)
         x_new = np.linspace(0, muscles_target.shape[1] / 100, int(muscles_target.shape[1] * interp_factor))
         muscles_target = f_mus(x_new)
+
+        # f_ext_target
+        f_ext_ref = np.zeros((f_ext_target.shape[0], int(f_ext_target.shape[1]*interp_factor), f_ext_target.shape[2]))
+        x = np.linspace(0, f_ext_target.shape[1] / 100, f_ext_target.shape[1])
+        for i in range(f_ext_target.shape[0]):
+            f_fext = interp1d(x, f_ext_target[i, :, :].T)
+            x_new = np.linspace(0, f_ext_target[i, :, :].T.shape[1] / 100, int(f_ext_target[i, :, :].T.shape[1] * interp_factor))
+            f_ext_ref[i, :, :] = f_fext(x_new).T
+
     else:
         markers_ref = markers_target
-    return x_ref, markers_ref, muscles_target
+        f_ext_ref = f_ext_target
+    return x_ref, markers_ref, muscles_target, f_ext_ref
 
 
 def get_data(ip=None, port=None, message=None, offline=False, offline_file_path=None):
@@ -259,19 +270,27 @@ def get_data(ip=None, port=None, message=None, offline=False, offline_file_path=
         n_init = 100
         if offline_file_path[-4:] == ".mat":
             mat = sio.loadmat(offline_file_path)
-            x_ref, markers, muscles = mat["kalman"], mat["markers"], mat["emg_proc"]
+            if "f_ext" not in mat.keys():
+                mat["f_ext"] = None
+                x_ref, markers, muscles, f_ext = mat["kalman"], mat["markers"], mat["emg_proc"], mat["f_ext"]
+            else:
+                x_ref, markers, muscles, f_ext = mat["kalman"], mat["markers"], mat["emg_proc"], mat["f_ext"]
 
         else:
             mat = load(offline_file_path)
+            if "f_ext" not in mat.keys():
+                mat["f_ext"] = None
             try:
-                x_ref, markers, muscles = mat["kalman"], mat["kin_target"], mat["muscles_target"]
+                x_ref, markers, muscles, f_ext = mat["kalman"], mat["kin_target"], mat["muscles_target"], mat["f_ext"]
             except:
-                x_ref, markers, muscles = (
+                f_ext = mat["f_ext"] if mat["f_ext"] is None else mat["f_ext"][:, n_init:nfinal]
+                x_ref, markers, muscles, f_ext = (
                     mat["kalman"][:, n_init:nfinal],
                     mat["markers"][:, :, n_init:nfinal],
                     mat["emg_proc"][:, n_init:nfinal],
+                    f_ext,
                 )
-        return x_ref, markers, muscles
+        return x_ref, markers, muscles, f_ext
     else:
         client = Client(ip, port, "TCP")
         return client.get_data(message)
