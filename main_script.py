@@ -3,12 +3,11 @@ This script is the main script for the project. It is used to run the mhe solver
 """
 import os.path
 import shutil
-from biosiglive.streaming.client import Message
 import multiprocessing as mp
 from mhe.ocp import *
 from mhe.utils import *
-from biosiglive.gui.plot import LivePlot
 from pathlib import Path
+from biosiglive import MskFunctions, InverseKinematicsMethods
 
 
 class MuscleForceEstimator:
@@ -85,6 +84,7 @@ class MuscleForceEstimator:
         self.save_all_frame = True
         self.with_f_ext = False
         self.f_ext_as_constraints = False
+        self.emg_names = []
 
         # Use the configuration dictionary to initialize the muscle force estimator parameters
         for key in conf.keys():
@@ -121,44 +121,35 @@ class MuscleForceEstimator:
         """
 
         biorbd_model = BiorbdModel(self.model_path)
-        self.data_to_get = []
-        self.data_to_get.append("markers")
-        self.data_to_get.append("emg")
-        if self.with_f_ext:
-            self.data_to_get.append("f_ext")
-        if self.test_offline:
-            x_ref, markers_target, muscles_target, f_ext_target = get_data(offline=True, offline_file_path=self.offline_file)
-            self.offline_data = [x_ref, markers_target, muscles_target, f_ext_target]
+        markers_target, markers_names, forces_object, f_ext_target, emg = load_data(self.offline_file,
+                                                                                     win_size=self.ns_mhe,
+                                                               filter_depth=False
+                                                           )
+        forces_object = biorbd_model.model.externalForceSet()
+        f_ext_target = f_ext_target[:, 0, :]
 
-        else:
-            nb_of_data = int(self.ns_mhe / self.interpol_factor) + 1
-            self.message = Message(
-                command=self.data_to_get,
-                read_frequency=self.exp_freq,
-                nb_frame_to_get=nb_of_data,
-                get_raw_data=False,
-                kalman=True,
-                ratio=1,
-            )
-            data = get_data(ip=self.server_ip, port=self.server_port, message=self.message)
-            x_ref = np.array(data["kalman"])
-            markers_target = np.array(data["markers"])[:, :, :]
-            muscles_target = np.array(data["emg_proc"])
-            if self.with_f_ext:
-                f_ext_target = np.array(data["f_ext"])
-            else:
-                f_ext_target = None
+        msk_function = MskFunctions(model=self.model_path, data_buffer_size=self.ns_mhe//self.interpol_factor + 1)
+        x_ref = msk_function.compute_inverse_kinematics(markers_target[..., :self.ns_mhe//self.interpol_factor + 1],
+                                                        method=InverseKinematicsMethods.BiorbdKalman)[0]
+
+        self.offline_data = [x_ref, markers_target, emg, forces_object, f_ext_target]
 
         window_len = self.ns_mhe
         window_duration = self.T_mhe
-
-        self.x_ref, self.markers_target, muscles_target, self.f_ext_target = interpolate_data(
+        self.muscle_track_idx = get_tracking_idx(msk_function.model, self.emg_names)
+        if emg is not None:
+            muscles_target = map_activation(
+                emg_proc=emg, muscle_track_idx=self.muscle_track_idx ,
+                model=msk_function.model,
+                emg_names=self.emg_names)
+        else:
+            muscles_target = np.zeros((biorbd_model.nb_muscles, window_len // self.interpol_factor ))
+        self.x_ref, self.markers_target, self.muscles_target, self.f_ext_target = interpolate_data(
             self.interpol_factor, x_ref, muscles_target, markers_target, f_ext_target,
         )
-        self.muscles_target = muscle_mapping(
-            muscles_target_tmp=muscles_target, muscle_track_idx=self.muscle_track_idx, mvc_list=self.mvc_list
-        )[:, :window_len]
-        self.f_ext_target = self.f_ext_target.T[:, :window_len, 0]
+        self.markers_target = self.markers_target[:, :, :window_len]
+
+        # self.f_ext_target = self.f_ext_target.T[:, :window_len, 0]
         self.kin_target = (
             self.markers_target[:, :, : window_len + 1]
             if self.kin_data_to_track == "markers"
@@ -190,7 +181,7 @@ class MuscleForceEstimator:
             with_f_ext=self.with_f_ext,
             f_ext_as_constraints=self.f_ext_as_constraints,
             track_emg=self.track_emg,
-            muscles_target=self.muscles_target,
+            muscles_target=self.muscles_target[:, : self.ns_mhe],
             f_ext_target=self.f_ext_target,
             kin_target=self.kin_target,
             biorbd_model=biorbd_model,
@@ -214,6 +205,7 @@ class MuscleForceEstimator:
             x0=self.x_ref,
             u0=u0,
             f_ext_0=self.f_ext_target,
+            f_ext_object=forces_object,
             use_torque=self.use_torque,
             with_f_ext=self.with_f_ext,
             f_ext_as_constraints=self.f_ext_as_constraints,
@@ -347,77 +339,71 @@ class MuscleForceEstimator:
 
 
 if __name__ == "__main__":
-    idx_trial = 3
-    data_dir = f"/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/data_gen/saves/"
-    result_dir = "results/results_w9"
-    trials = [
-        f"pedalage_{idx_trial}_proc.bio"
-        # "data_pedalage_1.bio",
-        # "data_abd_poid_2kg.bio",
-        # "data_cycl_poid_2kg",
-        # "data_flex_poid_2kg",
-        # "data_flex_sans_poid",
-        # "data_cycl_sans_poid",
-    ]
-    # configs = [0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12]
-    # exp_freq = [43, 38, 37, 34, 29, 27, 25, 24, 22]
-    configs = [0.08]
-    exp_freq = [30]
-    for c, config in enumerate(configs):
-        for trial in trials:
-            offline_path = data_dir + f"{trial}"
-            file_name = f"{Path(trial).stem}_result_duration_{config}.bio"
-            if os.path.isfile(f'results/results_w9/{file_name}'):
-                os.remove(f'results/results_w9/{file_name}')
+    # idx_trial = 3
+    # data_dir = f"/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/data_gen/saves/"
+    # result_dir = "results/results_w9"
+    data_dir = "/mnt/shared/Projet_hand_bike_markerless/process_data"
 
-            solver_options = {
-                "sim_method_jac_reuse": 1,
-                "levenberg_marquardt": 50.0,
-                "nlp_solver_step_length": 0.9,
-                "qp_solver_iter_max": 1000,
-            }
+    participants = ["P10"]
+    init_trials = [["gear_10"]] * len(participants)
+    processed_source = ["depth"]
+    final_files = []
+    for p, part in enumerate(participants):
+        model_dir = f"/mnt/shared/Projet_hand_bike_markerless/process_data/{part}/models"
+        result_dir = f"results/{part}"
+        all_files = os.listdir(f"{data_dir}/{part}")
+        all_files = [file for file in all_files if "gear" in file and "result_biomech" not in file and "3_crops" in file]
+        for file in all_files:
+            for trial in init_trials[participants.index(part)]:
+                if trial in file:
+                    final_files.append(f"{data_dir}/{part}/{file}")
 
-            model = f"results/wu_gauche_cycling_pos_scaled_{idx_trial}.bioMod"
+        # configs = [0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12]
+        # exp_freq = [43, 38, 37, 34, 29, 27, 25, 24, 22]
+        configs = [0.08]
+        exp_freq = [30]
+        for c, config in enumerate(configs):
+            for t, trial in enumerate(final_files):
+                offline_path = trial
+                if not os.path.isdir(result_dir):
+                    os.makedirs(result_dir)
+                solver_options = {
+                    "sim_method_jac_reuse": 1,
+                    "levenberg_marquardt": 50.0,
+                    "nlp_solver_step_length": 0.9,
+                    "qp_solver_iter_max": 1000,
+                }
 
-            configuration_dic = {
-                "model_path": model,
-                "mhe_time": config,
-                "interpol_factor": 2,
-                "use_torque": True,
-                "save_results": True,
-                "track_emg": True,
-                "with_f_ext": False,
-                "f_ext_as_constraints": False,
-                "kin_data_to_track": "markers",
-                "exp_freq": exp_freq[c],
-                "muscle_track_idx": [
-                    19,
-                    18,
-                    17,
-                    23,
-                    11,
-                    1,
-                    2,
-                    26,
-                    28,
-                    29,
-                    27,
-                    30,
-                    25,
-                    13,
-                    15,
-                    16,
-                ],
-                "result_dir": result_dir,
-                "result_file_name": file_name,
-                "solver_options": solver_options,
-                "weights": configure_weights(),
-                "frame_to_save": 0,
-                "save_all_frame": False,
-            }
-            variables_dic = {"print_lvl": 0}  # print level 0 = no print, 1 = print information
-            data_to_show = None  # ["q", "force"]
-            server_ip = "192.168.1.211"
-            server_port = 50000
-            MHE = MuscleForceEstimator(configuration_dic)
-            MHE.run(variables_dic, server_ip, server_port, data_to_show, test_offline=True, offline_file=offline_path)
+                model = f"{model_dir}/{init_trials[p][t]}_processed_3_model_scaled_depth.bioMod"
+                configuration_dic = {
+                    "model_path": model,
+                    "mhe_time": config,
+                    "interpol_factor": 2,
+                    "use_torque": True,
+                    "save_results": True,
+                    "track_emg": True,
+                    "with_f_ext": True,
+                    "f_ext_as_constraints": False,
+                    "kin_data_to_track": "markers",
+                    "exp_freq": exp_freq[c],
+                    "result_dir": result_dir,
+                    "result_file_name": f"result_mhe_{trial}",
+                    "solver_options": solver_options,
+                    "weights": configure_weights(),
+                    "frame_to_save": 0,
+                    "save_all_frame": False,
+                    "emg_names": ["PECM",
+                                  "bic",
+                                  "tri",
+                                  "LAT",
+                                  'TRP1',
+                                  "DELT1",
+                                  'DELT2',
+                                  'DELT3']
+                }
+                variables_dic = {"print_lvl": 0}  # print level 0 = no print, 1 = print information
+                data_to_show = None  # ["q", "force"]
+                server_ip = "192.168.1.211"
+                server_port = 50000
+                MHE = MuscleForceEstimator(configuration_dic)
+                MHE.run(variables_dic, server_ip, server_port, data_to_show, test_offline=True, offline_file=offline_path)

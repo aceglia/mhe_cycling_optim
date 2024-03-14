@@ -9,19 +9,18 @@ from biosiglive.file_io.save_and_load import load
 import numpy as np
 import datetime
 import scipy.io as sio
-from casadi import MX, Function, horzcat, vertcat
+from casadi import MX, Function, horzcat, vertcat, mtimes, cross
 from bioptim import (
     MovingHorizonEstimator,
     ObjectiveList,
     ObjectiveFcn,
     DynamicsList,
     DynamicsFcn,
+    InitialGuessList,
     BoundsList,
-    InitialGuess,
     InterpolationType,
     Solver,
     Node,
-    Bounds,
     OptimalControlProgram,
     Solution,
     DynamicsFunctions,
@@ -207,11 +206,15 @@ def define_objective(
 
 
 def custom_muscles_driven(
-    states: MX.sym,
-    controls: MX.sym,
-    parameters: MX.sym,
-    nlp,
-    with_f_ext: bool,
+    time,
+    states,
+    controls,
+    parameters,
+    algebraic_states,
+    nlp: NonLinearProgram,
+    with_residual_torque: bool = True,
+    with_f_ext: bool = False,
+    external_forces_object = None,
 ):
     """
     Forward dynamics driven by muscle.
@@ -228,14 +231,13 @@ def custom_muscles_driven(
         The definition of the system
     """
 
-    DynamicsFunctions.apply_parameters(parameters, nlp)
-    q = DynamicsFunctions.get(nlp.states["q"], states)
-    qdot = DynamicsFunctions.get(nlp.states["qdot"], states)
-    tau_var, tau_mx = (nlp.controls, controls) if "tau" in nlp.controls else (nlp.states, states)
-    residual_tau = DynamicsFunctions.get(tau_var["tau"], tau_mx)
+    DynamicsFunctions.apply_parameters(nlp)
+    q = nlp.get_var_from_states_or_controls("q", states, controls)
+    qdot = nlp.get_var_from_states_or_controls("qdot", states, controls)
+    residual_tau = DynamicsFunctions.get(nlp.controls["tau"], controls)  if with_residual_torque else None
 
-    mus_act_nlp, mus_act = (nlp.states, states) if "muscles" in nlp.states else (nlp.controls, controls)
-    mus_activations = DynamicsFunctions.get(mus_act_nlp["muscles"], mus_act)
+    mus_activations = nlp.get_var_from_states_or_controls("muscles", states, controls)
+
     muscles_tau = DynamicsFunctions.compute_tau_from_muscle(nlp, q, qdot, mus_activations)
 
     # for i in range(nlp.model.nb_q):
@@ -245,12 +247,21 @@ def custom_muscles_driven(
     tau = muscles_tau + residual_tau if residual_tau is not None else muscles_tau
     dq = DynamicsFunctions.compute_qdot(nlp, q, qdot)
     if with_f_ext:
-        f_ext = DynamicsFunctions.get(nlp.controls["f_ext"], controls)
-        ddq = nlp.model.constrained_forward_dynamics(q, qdot, tau, f_ext)
+        f_ext = nlp.get_var_from_states_or_controls("f_ext", states, controls)
+        B = [0, 0, 0, 1]
+        f_ext_mat = MX(6, 1)
+        all_jcs = nlp.model.model.allGlobalJCS(q)
+        RT = all_jcs[-1].to_mx()
+        B = mtimes(RT, B)
+        vecteur_OB = B[:3]
+        f_ext_mat[:3] = f_ext[:3] + cross(vecteur_OB, f_ext[3:6])
+        f_ext_mat[3:] = f_ext[3:]
+        external_forces_object.add("radius_left_pro_sup_left", f_ext_mat)
+        ddq = nlp.model.model.ForwardDynamics(q, qdot, tau, external_forces_object).to_mx()
     else:
         # nlp.external_forces = np.zeros((6,16))
-        ddq = nlp.model.constrained_forward_dynamics(q, qdot, tau, np.zeros((6, 16)))
-        # ddq = DynamicsFunctions.forward_dynamics(nlp, q, qdot, tau, False)
+        # ddq = nlp.model.constrained_forward_dynamics(q, qdot, tau, np.zeros((6, 16)))
+        ddq = DynamicsFunctions.forward_dynamics(nlp, q, qdot, tau, False)
     dxdt = MX(nlp.states.shape, ddq.shape[1])
     dxdt[nlp.states["q"].index, :] = horzcat(*[dq for _ in range(ddq.shape[1])])
     dxdt[nlp.states["qdot"].index, :] = ddq
@@ -258,7 +269,9 @@ def custom_muscles_driven(
     return DynamicsEvaluation(dxdt=dxdt, defects=None)
 
 
-def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram, with_f_ext: bool):
+def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram, with_residual_torque: bool = True,
+    with_f_ext: bool = False,
+    external_forces_object = None,):
     """
     Tell the program which variables are states and controls.
     The user is expected to use the ConfigureProblem.configure_xxx functions.
@@ -277,9 +290,13 @@ def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram, with_f_e
     ConfigureProblem.configure_qdot(ocp, nlp, as_states=True, as_controls=False)
     ConfigureProblem.configure_tau(ocp, nlp, as_states=False, as_controls=True)
     if with_f_ext:
-        ConfigureProblem.configure_f_ext(ocp, nlp, as_states=False, as_controls=True)
+        ConfigureProblem.configure_new_variable("f_ext", [f"f_ext_{i}" for i in range(6)],
+                                                ocp, nlp, as_states=False, as_controls=True)
     ConfigureProblem.configure_muscles(ocp, nlp, as_states=False, as_controls=True)
-    ConfigureProblem.configure_dynamics_function(ocp, nlp, custom_muscles_driven, with_f_ext=with_f_ext)
+    ConfigureProblem.configure_dynamics_function(ocp, nlp, custom_muscles_driven,
+                                                 with_residual_torque=with_residual_torque,
+    with_f_ext= with_f_ext,
+    external_forces_object=external_forces_object,)
 
 
 def prepare_problem(
@@ -290,6 +307,7 @@ def prepare_problem(
     window_duration: float,
     x0: np.ndarray,
     u0: np.ndarray = None,
+    f_ext_object = None,
     f_ext_0 = None,
     use_torque: bool = False,
     with_f_ext: bool = False,
@@ -349,9 +367,12 @@ def prepare_problem(
         # dynamic_function=custom_dynamic,
         # with_excitations=False,
         # with_torque=use_torque,
-        with_f_ext=with_f_ext
+        with_f_ext=with_f_ext,
+        external_forces_object=f_ext_object,
+        with_residual_torque=True,
         # expand=False,
     )
+
     if x0.shape[0] != biorbd_model.nb_q * 2:
         x_0 = np.concatenate((x0[:, : window_len + 1], np.zeros((x0.shape[0], window_len + 1))))
     else:
@@ -359,72 +380,52 @@ def prepare_problem(
 
     # State path constraint
     x_bounds = BoundsList()
-    x_bounds.add(bounds=biorbd_model.bounds_from_ranges(["q", "qdot"]))
-    x_bounds[0].min[: biorbd_model.nb_q, 0] = [i - 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
-    x_bounds[0].max[: biorbd_model.nb_q, 0] = [i + 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
-    x_bounds[0].min[biorbd_model.nb_q: biorbd_model.nb_q * 2, 0] = [
-        i - 0.1 * i for i in x_0[biorbd_model.nb_q:, 0]
-    ]
-    x_bounds[0].max[biorbd_model.nb_q: biorbd_model.nb_q * 2, 0] = [
-        i + 0.1 * i for i in x_0[biorbd_model.nb_q:, 0]
-    ]
-    x_bounds[0].min[biorbd_model.nb_q: biorbd_model.nb_q * 2, [1, -1]] = [[-5] * 2] * biorbd_model.nb_q
-    x_bounds[0].max[biorbd_model.nb_q: biorbd_model.nb_q * 2, [1, -1]] = [[5] * 2] * biorbd_model.nb_q
+    x_bounds["q"] = biorbd_model.bounds_from_ranges("q")
+    x_bounds["qdot"] = biorbd_model.bounds_from_ranges("qdot")
+    # x_bounds[0].min[: biorbd_model.nb_q, 0] = [i - 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
+    # x_bounds[0].max[: biorbd_model.nb_q, 0] = [i + 0.1 * i for i in x_0[: biorbd_model.nb_q, 0]]
+    # x_bounds[0].min[biorbd_model.nb_q: biorbd_model.nb_q * 2, 0] = [
+    #     i - 0.1 * i for i in x_0[biorbd_model.nb_q:, 0]
+    # ]
+    # x_bounds[0].max[biorbd_model.nb_q: biorbd_model.nb_q * 2, 0] = [
+    #     i + 0.1 * i for i in x_0[biorbd_model.nb_q:, 0]
+    # ]
+    # x_bounds[0].min[biorbd_model.nb_q: biorbd_model.nb_q * 2, [1, -1]] = [[-5] * 2] * biorbd_model.nb_q
+    # x_bounds[0].max[biorbd_model.nb_q: biorbd_model.nb_q * 2, [1, -1]] = [[5] * 2] * biorbd_model.nb_q
     if with_f_ext and f_ext_as_constraints:
-
-        u_bounds = Bounds(
-            np.concatenate((np.tile(np.array([tau_min] * nbGT + [muscle_min] * biorbd_model.nb_muscles),
-                                    (window_len, 1)).T, f_ext_min), axis=0),
-            np.concatenate((np.tile(np.array([tau_max] * nbGT + [muscle_max] * biorbd_model.nb_muscles),
-                                    (window_len, 1)).T, f_ext_max), axis=0),
-            # np.tile([tau_min] * nbGT, (window_len, 1)).T + np.tile([muscle_min] * biorbd_model.nb_muscles, (window_len, 1)).T + f_ext_min,
-            # np.tile([tau_max] * nbGT , (window_len, 1)).T + np.tile([muscle_max] * biorbd_model.nb_muscles , (window_len, 1)).T + f_ext_max,
-            interpolation=InterpolationType.EACH_FRAME,
-        )
-        #rajouter des concatenate partout
-
-    elif with_f_ext and f_ext_as_constraints is False:
-
-        u_bounds = Bounds(
-            [tau_min] * nbGT + [muscle_min] * biorbd_model.nb_muscles + f_ext_min,
-            [tau_max] * nbGT + [muscle_max] * biorbd_model.nb_muscles + f_ext_max,
-            interpolation=InterpolationType.CONSTANT_WITH_FIRST_AND_LAST_DIFFERENT,
-        )
-
+        u_bounds = BoundsList()
+        u_bounds.add("tau", min_bound=tau_min, max_bound=tau_max, interpolation=InterpolationType.CONSTANT)
+        u_bounds.add("muscles", min_bound=muscle_min, max_bound=muscle_max, interpolation=InterpolationType.CONSTANT)
+        u_bounds.add("f_ext", min_bound=f_ext_0[:, : window_len],
+                     max_bound=f_ext_0[:, : window_len], interpolation=InterpolationType.EACH_FRAME)
     else:
-        u_bounds = Bounds(
-            [tau_min] * nbGT + [muscle_min] * biorbd_model.nb_muscles,
-            [tau_max] * nbGT + [muscle_max] * biorbd_model.nb_muscles,
-            interpolation=InterpolationType.CONSTANT_WITH_FIRST_AND_LAST_DIFFERENT,
-        )
-
+        u_bounds = BoundsList()
+        u_bounds.add("tau", min_bound=tau_min, max_bound=tau_max, interpolation=InterpolationType.CONSTANT)
+        u_bounds.add("muscles", min_bound=muscle_min, max_bound=muscle_max, interpolation=InterpolationType.CONSTANT)
     # Initial guesses
-
     if x0.shape[0] != biorbd_model.nb_q * 2:
         x0 = np.concatenate((x0[:, : window_len + 1], np.zeros((x0.shape[0], window_len + 1))))
     else:
         x0 = x0[:, : window_len + 1]
-
-    x_init = InitialGuess(x0, interpolation=InterpolationType.EACH_FRAME)
+    x_init = InitialGuessList()
+    u_init = InitialGuessList()
+    x_init.add("q", x0[:biorbd_model.nb_q, :], interpolation=InterpolationType.EACH_FRAME)
+    x_init.add("qdot", x0[biorbd_model.nb_q:, :], interpolation=InterpolationType.EACH_FRAME)
     if with_f_ext:
         if u0 is None:
-            u0 = np.concatenate((np.tile(np.array([tau_init] * nbGT + [muscle_init] * biorbd_model.nb_muscles), (window_len, 1)).T, f_ext_init), axis=0)
-            u_init = InitialGuess(u0, interpolation=InterpolationType.EACH_FRAME)
-        else:
-            u_init = InitialGuess(u0[:, :window_len], interpolation=InterpolationType.EACH_FRAME)
-    else:
-        if u0 is None:
-            u0 = np.array([tau_init] * nbGT + [muscle_init] * biorbd_model.nb_muscles)
-            u_init = InitialGuess(np.tile(u0, (window_len, 1)).T, interpolation=InterpolationType.EACH_FRAME)
-        else:
-            u_init = InitialGuess(u0[:, :window_len], interpolation=InterpolationType.EACH_FRAME)
+            u0 = np.concatenate((np.tile(np.array([tau_init] * nbGT + [muscle_init] * biorbd_model.nb_muscles),
+                                         (window_len, 1)).T, f_ext_0), axis=0)
+        u_init.add("tau", u0[:nbGT, :], interpolation=InterpolationType.EACH_FRAME)
+        u_init.add("muscles", u0[nbGT:nbGT + biorbd_model.nb_muscles, :], interpolation=InterpolationType.EACH_FRAME)
+        if with_f_ext:
+            u_init.add("f_ext", u0[nbGT + biorbd_model.nb_muscles:, :], interpolation=InterpolationType.EACH_FRAME)
 
     problem = CustomMhe(
         bio_model=biorbd_model,
         dynamics=dynamics,
         window_len=window_len,
         window_duration=window_duration,
-        objective_functions=objectives,
+        common_objective_functions=objectives,
         constraints=constraints,
         x_init=x_init,
         u_init=u_init,
@@ -953,14 +954,46 @@ class CustomMhe(MovingHorizonEstimator):
             sol.controls["all"][:, self.frame_to_export: self.frame_to_export + 1],
         )
 
-    def _initialize_solution(self, states: list, controls: list):
-        _states = InitialGuess(np.concatenate(states, axis=1), interpolation=InterpolationType.EACH_FRAME)
-        _controls = InitialGuess(np.concatenate(controls, axis=1), interpolation=InterpolationType.EACH_FRAME)
-        solution_ocp = OptimalControlProgram(
-            bio_model=self.original_values["bio_model"][0],
-            dynamics=self.original_values["dynamics"][0],
-            n_shooting=(self.total_optimization_run * 1) - 1,
-            phase_time=self.total_optimization_run * self.nlp[0].dt,
-            skip_continuity=True,
-        )
-        return Solution(solution_ocp, [_states, _controls])
+    # def _initialize_solution(self, states: list, controls: list):
+    #     _states = InitialGuess(np.concatenate(states, axis=1), interpolation=InterpolationType.EACH_FRAME)
+    #     _controls = InitialGuess(np.concatenate(controls, axis=1), interpolation=InterpolationType.EACH_FRAME)
+    #     solution_ocp = OptimalControlProgram(
+    #         bio_model=self.original_values["bio_model"][0],
+    #         dynamics=self.original_values["dynamics"][0],
+    #         n_shooting=(self.total_optimization_run * 1) - 1,
+    #         phase_time=self.total_optimization_run * self.nlp[0].dt,
+    #         skip_continuity=True,
+    #     )
+    #     return Solution(solution_ocp, [_states, _controls])
+
+    # def _initialize_solution(self, dt: float, states: list, controls: list):
+    #     x_init = InitialGuessList()
+    #     for key in self.nlp[0].states.keys():
+    #         x_init.add(
+    #             key,
+    #             np.concatenate([state[key] for state in states], axis=1),
+    #             interpolation=InterpolationType.EACH_FRAME,
+    #             phase=0,
+    #         )
+    #
+    #     u_init = InitialGuessList()
+    #     for key in self.nlp[0].controls.keys():
+    #         controls_tp = np.concatenate([control[key] for control in controls], axis=1)
+    #         u_init.add(key, controls_tp, interpolation=InterpolationType.EACH_FRAME, phase=0)
+    #
+    #     model_serialized = self.nlp[0].model.serialize()
+    #     model_class = model_serialized[0]
+    #     model_initializer = model_serialized[1]
+    #
+    #     solution_ocp = OptimalControlProgram(
+    #         bio_model=model_class(**model_initializer),
+    #         dynamics=self.nlp[0].dynamics_type,
+    #         n_shooting=self.total_optimization_run,
+    #         phase_time=self.total_optimization_run * dt,
+    #         x_init=x_init,
+    #         u_init=u_init,
+    #         use_sx=self.cx == SX,
+    #     )
+    #     a_init = InitialGuessList()
+    #     p_init = InitialGuessList()
+    #     return Solution.from_initial_guess(solution_ocp, [np.array([dt]), x_init, u_init, p_init, a_init])

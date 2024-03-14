@@ -4,7 +4,8 @@ This code provides some utility functions for the mhe implementation.
 
 import numpy as np
 import bioptim
-from biosiglive.file_io.save_and_load import save, load
+from biosiglive import save, load, OfflineProcessing
+from biosiglive.processing.msk_utils import ExternalLoads
 from biosiglive.streaming.client import Client
 from time import strftime
 import datetime
@@ -170,43 +171,71 @@ def save_results(
     save(data, data_path)
 
 
-def muscle_mapping(muscles_target_tmp: np.ndarray, muscle_track_idx: list, mvc_list=None):
-    """
-    Map the muscles to the right index.
+def map_activation(emg_proc, muscle_track_idx, model, emg_names, emg_init=None, mvc_normalized=True):
+    # emg_names = ["PectoralisMajor",
+    #              "BIC",
+    #              "TRI",
+    #              "LatissimusDorsi",
+    #              'TrapeziusClav',
+    #              "DeltoideusClavicle_A",
+    #              'DeltoideusScapula_M',
+    #              'DeltoideusScapula_P']
+    # emg_names = ["PECM",
+    #              "bic",
+    #              "tri",
+    #              "LAT",
+    #              'TRP1',
+    #              "DELT1",
+    #              'DELT2',
+    #              'DELT3']
+    act = np.zeros((len(muscle_track_idx), int(emg_proc.shape[1])))
+    init_count = 0
+    for j, name in enumerate(emg_names):
+        count = 0
+        for i in range(model.nbMuscles()):
+            if name in model.muscleNames()[i].to_string():
+                count += 1
+        act[list(range(init_count, init_count + count)), :] = emg_proc[j, :]
+        init_count += count
+    return act
 
-    Parameters
-    ----------
-    muscles_target_tmp: np.ndarray
-        The muscles target.
-    mvc_list: list
-        The list of the mvc.
-    muscle_track_idx: list
-        The list of the muscle index.
-
-    Returns
-    -------
-    The mapped muscles.
-    """
-    muscles_target = np.zeros((len(muscle_track_idx), int(muscles_target_tmp.shape[1])))
-    muscles_target[[0], :] = muscles_target_tmp[0, :]
-    muscles_target[[1], :] = muscles_target_tmp[1, :]
-    muscles_target[2, :] = muscles_target_tmp[2, :]
-    muscles_target[3, :] = muscles_target_tmp[3, :]
-    muscles_target[[4], :] = muscles_target_tmp[4, :]
-    muscles_target[[5], :] = muscles_target_tmp[5, :]
-    muscles_target[[6], :] = muscles_target_tmp[6, :]
-    muscles_target[[7, 10], :] = muscles_target_tmp[7, :]
-    muscles_target[[8, 9, 11], :] = muscles_target_tmp[8, :]
-    muscles_target[[12], :] = muscles_target_tmp[9, :]
-    muscles_target[[13], :] = muscles_target_tmp[10, :]
-    muscles_target[[14], :] = muscles_target_tmp[11, :]
-    muscles_target[[15], :] = muscles_target_tmp[12, :]
-
-    if mvc_list:
-        muscles_target = muscles_target / np.repeat(mvc_list, muscles_target_tmp.shape[1]).reshape(
-            len(mvc_list), muscles_target_tmp.shape[1]
-        )
-    return muscles_target
+# def muscle_mapping(muscles_target_tmp: np.ndarray, muscle_track_idx: list, mvc_list=None):
+#     """
+#     Map the muscles to the right index.
+#
+#     Parameters
+#     ----------
+#     muscles_target_tmp: np.ndarray
+#         The muscles target.
+#     mvc_list: list
+#         The list of the mvc.
+#     muscle_track_idx: list
+#         The list of the muscle index.
+#
+#     Returns
+#     -------
+#     The mapped muscles.
+#     """
+#     muscles_target = np.zeros((len(muscle_track_idx), int(muscles_target_tmp.shape[1])))
+#     muscles_target[[0], :] = muscles_target_tmp[0, :]
+#     muscles_target[[1], :] = muscles_target_tmp[1, :]
+#     muscles_target[2, :] = muscles_target_tmp[2, :]
+#     muscles_target[3, :] = muscles_target_tmp[3, :]
+#     muscles_target[[4], :] = muscles_target_tmp[4, :]
+#     muscles_target[[5], :] = muscles_target_tmp[5, :]
+#     muscles_target[[6], :] = muscles_target_tmp[6, :]
+#     muscles_target[[7, 10], :] = muscles_target_tmp[7, :]
+#     muscles_target[[8, 9, 11], :] = muscles_target_tmp[8, :]
+#     muscles_target[[12], :] = muscles_target_tmp[9, :]
+#     muscles_target[[13], :] = muscles_target_tmp[10, :]
+#     muscles_target[[14], :] = muscles_target_tmp[11, :]
+#     muscles_target[[15], :] = muscles_target_tmp[12, :]
+#
+#     if mvc_list:
+#         muscles_target = muscles_target / np.repeat(mvc_list, muscles_target_tmp.shape[1]).reshape(
+#             len(mvc_list), muscles_target_tmp.shape[1]
+#         )
+#     return muscles_target
 
 
 def interpolate_data(interp_factor: int, x_ref: np.ndarray, muscles_target: np.ndarray, markers_target: np.ndarray, f_ext_target: np.ndarray):
@@ -251,12 +280,16 @@ def interpolate_data(interp_factor: int, x_ref: np.ndarray, muscles_target: np.n
         muscles_target = f_mus(x_new)
 
         # f_ext_target
-        f_ext_ref = np.zeros((f_ext_target.shape[0], int(f_ext_target.shape[1]*interp_factor), f_ext_target.shape[2]))
         x = np.linspace(0, f_ext_target.shape[1] / 100, f_ext_target.shape[1])
-        for i in range(f_ext_target.shape[0]):
-            f_fext = interp1d(x, f_ext_target[i, :, :].T)
-            x_new = np.linspace(0, f_ext_target[i, :, :].T.shape[1] / 100, int(f_ext_target[i, :, :].T.shape[1] * interp_factor))
-            f_ext_ref[i, :, :] = f_fext(x_new).T
+        f_x = interp1d(x, f_ext_target)
+        x_new = np.linspace(0, f_ext_target.shape[1] / 100, int(f_ext_target.shape[1] * interp_factor))
+        f_ext_ref = f_x(x_new)
+        # f_ext_ref = np.zeros((f_ext_target.shape[0], int(f_ext_target.shape[1]*interp_factor), f_ext_target.shape[2]))
+        # x = np.linspace(0, f_ext_target.shape[1] / 100, f_ext_target.shape[1])
+        # for i in range(f_ext_target.shape[0]):
+        #     f_fext = interp1d(x, f_ext_target[i, :, :].T)
+        #     x_new = np.linspace(0, f_ext_target[i, :, :].T.shape[1] / 100, int(f_ext_target[i, :, :].T.shape[1] * interp_factor))
+        #     f_ext_ref[i, :, :] = f_fext(x_new).T
 
     else:
         markers_ref = markers_target
@@ -264,33 +297,77 @@ def interpolate_data(interp_factor: int, x_ref: np.ndarray, muscles_target: np.n
     return x_ref, markers_ref, muscles_target, f_ext_ref
 
 
-def get_data(ip=None, port=None, message=None, offline=False, offline_file_path=None):
-    if offline:
-        nfinal = -400
-        n_init = 100
-        if offline_file_path[-4:] == ".mat":
-            mat = sio.loadmat(offline_file_path)
-            if "f_ext" not in mat.keys():
-                mat["f_ext"] = None
-                x_ref, markers, muscles, f_ext = mat["kalman"], mat["markers"], mat["emg_proc"], mat["f_ext"]
-            else:
-                x_ref, markers, muscles, f_ext = mat["kalman"], mat["markers"], mat["emg_proc"], mat["f_ext"]
+def load_data(data_path, filter_depth, win_size=1):
+    data = load(data_path)
+    markers_depth = data["markers_depth_interpolated"][:, :-3, :]
+    sensix_data = data["sensix_data_interpolated"]
+    depth_markers_names = data["depth_markers_names"]
+    idx_ts = depth_markers_names.index("scapts")
+    idx_ai = depth_markers_names.index("scapia")
+    depth_markers_names[idx_ts] = "scapia"
+    depth_markers_names[idx_ai] = "scapts"
+    names_from_source = depth_markers_names
 
-        else:
-            mat = load(offline_file_path)
-            if "f_ext" not in mat.keys():
-                mat["f_ext"] = None
-            try:
-                x_ref, markers, muscles, f_ext = mat["kalman"], mat["kin_target"], mat["muscles_target"], mat["f_ext"]
-            except:
-                f_ext = mat["f_ext"] if mat["f_ext"] is None else mat["f_ext"][:, n_init:nfinal]
-                x_ref, markers, muscles, f_ext = (
-                    mat["kalman"][:, n_init:nfinal],
-                    mat["markers"][:, :, n_init:nfinal],
-                    mat["emg_proc"][:, n_init:nfinal],
-                    f_ext,
-                )
-        return x_ref, markers, muscles, f_ext
-    else:
-        client = Client(ip, port, "TCP")
-        return client.get_data(message)
+    emg = data["emg_proc_interpolated"]
+    if not isinstance(emg, np.ndarray):
+        emg = None
+    markers_depth_filtered = np.zeros((3, markers_depth.shape[1], markers_depth.shape[2]))
+    for i in range(3):
+        markers_depth_filtered[i, :, :] = OfflineProcessing().butter_lowpass_filter(markers_depth[i, :, :],
+                                                                                    4, 120, 4)
+    depth = markers_depth_filtered if filter_depth else markers_depth
+    markers_from_source = depth
+    # plt.figure("markers")
+    # for i in range(markers_depth_filtered.shape[1]):
+    #     plt.subplot(4, ceil(markers_depth_filtered.shape[1] / 4), i + 1)
+    #     for j in range(3):
+    #         plt.plot(markers_depth_filtered[j, i, :])
+    #         plt.plot(markers_vicon[j, vicon_to_depth_idx[i], :])
+    #         plt.plot(markers_minimal_vicon[j, i, :])
+    #         plt.plot(peaks, markers_minimal_vicon[j, i, peaks], "x")
+    #
+    # plt.show()
+    forces = ExternalLoads()
+    forces.add_external_load(
+        point_of_application=[0, 0, 0],
+        applied_on_body="radius_left_pro_sup_left",
+        express_in_coordinate="ground",
+        name="hand_pedal",
+        load=np.zeros((6, win_size)),
+    )
+    f_ext = np.array([sensix_data["RMY"],
+                      -sensix_data["RMX"],
+                      sensix_data["RMZ"],
+                      sensix_data["RFY"],
+                      -sensix_data["RFX"],
+                      sensix_data["RFZ"]])
+    return markers_from_source, names_from_source, forces, f_ext, emg
+
+
+def get_tracking_idx(model, emg_names):
+    muscle_list = []
+    for i in range(model.nbMuscles()):
+        muscle_list.append(model.muscleNames()[i].to_string())
+    # emg_names = ["PectoralisMajor",
+    #              "BIC",
+    #              "TRI",
+    #              "LatissimusDorsi",
+    #              'TrapeziusClav',
+    #              "DeltoideusClavicle_A",
+    #              'DeltoideusScapula_M',
+    #              'DeltoideusScapula_P']
+    # emg_names = ["PECM",
+    #              "bic",
+    #              "tri",
+    #              "LAT",
+    #              'TRP1',
+    #              "DELT1",
+    #              'DELT2',
+    #              'DELT3']
+
+    muscle_track_idx = []
+    for i in range(len(emg_names)):
+        for j in range(len(muscle_list)):
+            if emg_names[i] in muscle_list[j]:
+                muscle_track_idx.append(j)
+    return muscle_track_idx
