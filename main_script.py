@@ -4,6 +4,9 @@ This script is the main script for the project. It is used to run the mhe solver
 import os.path
 import shutil
 import multiprocessing as mp
+
+import matplotlib.pyplot as plt
+
 from mhe.ocp import *
 from mhe.utils import *
 from pathlib import Path
@@ -40,8 +43,8 @@ class MuscleForceEstimator:
         self.exp_freq = 35
         self.ns_mhe = 0
         self.mhe_time = 0.1
-        self.markers_rate = 100
-        self.emg_rate = 2000
+        self.markers_rate = 120
+        self.emg_rate = 2160
         self.get_names = False
         self.get_kalman = True
         self.offline_data = None
@@ -96,8 +99,10 @@ class MuscleForceEstimator:
             )
 
         self.T_mhe = self.mhe_time
+        self.n_before_interpolate = int(self.T_mhe * self.markers_rate)
         self.ns_mhe = int(self.T_mhe * self.markers_rate * self.interpol_factor)
-        self.slide_size = int(((self.markers_rate * self.interpol_factor) / self.exp_freq))
+        # self.slide_size = int(((self.markers_rate * self.interpol_factor) / self.exp_freq))
+        self.slide_size = 1
         self.nbQ, self.nbMT = biorbd_model.nb_q, biorbd_model.nb_muscles
         self.nbGT = biorbd_model.nb_tau if self.use_torque else 0
         self.current_time = strftime("%Y%m%d-%H%M")
@@ -121,49 +126,77 @@ class MuscleForceEstimator:
         """
 
         biorbd_model = BiorbdModel(self.model_path)
+        # Old data :
+        # x_ref, markers_target, emg = get_data(offline=True, offline_file_path=self.offline_file)
+        # _, _, forces_object, f_ext_target, _ = load_data(self.offline_file,
+        #                                                                              win_size=self.ns_mhe,
+        #                                                                             source=self.source,
+        #                                                        filter_depth=False
+        #                                                    )
+        # f_ext_target = np.zeros((6, 1, emg.shape[1]))
+        # forces_object = None
+
+        # New data :
         markers_target, markers_names, forces_object, f_ext_target, emg = load_data(self.offline_file,
                                                                                      win_size=self.ns_mhe,
+                                                                                    source=self.source,
                                                                filter_depth=False
                                                            )
+        markers_target = reorder_markers(markers_target[:, :-3, :],
+                                                     biorbd_model.model,
+                                                     markers_names[:-3])
+        self.muscle_track_idx = get_tracking_idx(biorbd_model.model, self.emg_names)
+
+        msk_function = MskFunctions(model=self.model_path, data_buffer_size=markers_target.shape[2])
+        x_ref = np.zeros((biorbd_model.nb_q * 2, markers_target.shape[2]))
+        x_ref[:biorbd_model.nb_q, :], x_ref[biorbd_model.nb_q:, :] = msk_function.compute_inverse_kinematics(markers_target,
+                                                        method=InverseKinematicsMethods.BiorbdLeastSquare)
+
+        # import bioviz
+        # b = bioviz.Viz(model_path=self.model_path)
+        # b.load_movement(x_ref)
+        # b.load_experimental_markers(markers_target)
+        # b.exec()
+
         forces_object = biorbd_model.model.externalForceSet()
         f_ext_target = f_ext_target[:, 0, :]
-
-        msk_function = MskFunctions(model=self.model_path, data_buffer_size=self.ns_mhe//self.interpol_factor + 1)
-        x_ref = msk_function.compute_inverse_kinematics(markers_target[..., :self.ns_mhe//self.interpol_factor + 1],
-                                                        method=InverseKinematicsMethods.BiorbdKalman)[0]
-
-        self.offline_data = [x_ref, markers_target, emg, forces_object, f_ext_target]
-
+        self.offline_data = [x_ref, markers_target, emg, f_ext_target]
         window_len = self.ns_mhe
         window_duration = self.T_mhe
-        self.muscle_track_idx = get_tracking_idx(msk_function.model, self.emg_names)
         if emg is not None:
             muscles_target = map_activation(
                 emg_proc=emg, muscle_track_idx=self.muscle_track_idx ,
                 model=msk_function.model,
                 emg_names=self.emg_names)
         else:
-            muscles_target = np.zeros((biorbd_model.nb_muscles, window_len // self.interpol_factor ))
+            muscles_target = np.zeros((biorbd_model.nb_muscles, self.n_before_interpolate))
         self.x_ref, self.markers_target, self.muscles_target, self.f_ext_target = interpolate_data(
             self.interpol_factor, x_ref, muscles_target, markers_target, f_ext_target,
         )
-        self.markers_target = self.markers_target[:, :, :window_len]
+        t = np.linspace(0, 100, self.x_ref.shape[1])
+        # t_before = np.linspace(0, 100, x_ref.shape[1])
+
+        plt.figure("q")
+        plt.plot(x_ref[:biorbd_model.nb_q, :].T)
+        # plt.plot(t_before, x_ref[:biorbd_model.nb_q, :].T, "--")
+        plt.show()
+        self.markers_target = self.markers_target[:, :, :window_len + 1]
 
         # self.f_ext_target = self.f_ext_target.T[:, :window_len, 0]
         self.kin_target = (
             self.markers_target[:, :, : window_len + 1]
             if self.kin_data_to_track == "markers"
-            else self.x_ref[: self.nbQ, : window_len + 1]
+            else self.x_ref[: self.nbQ, : window_len + 1].copy()
         )
 
         for i in range(biorbd_model.nb_muscles):
             self.muscle_names.append(biorbd_model.muscle_names[i])
         if self.x_ref.shape[0] != biorbd_model.nb_q * 2:
             previous_sol = np.concatenate(
-                (self.x_ref[:, : window_len + 1], np.zeros((self.x_ref.shape[0], window_len + 1)))
+                (self.x_ref[:, : window_len + 1].copy(), np.zeros((self.x_ref.shape[0], window_len + 1)))
             )
         else:
-            previous_sol = self.x_ref[:, : window_len + 1]
+            previous_sol = self.x_ref[:, : window_len + 1].copy()
         muscle_init = np.ones((biorbd_model.nb_muscles, self.ns_mhe)) * 0.1
         count = 0
         for i in self.muscle_track_idx:
@@ -182,7 +215,7 @@ class MuscleForceEstimator:
             f_ext_as_constraints=self.f_ext_as_constraints,
             track_emg=self.track_emg,
             muscles_target=self.muscles_target[:, : self.ns_mhe],
-            f_ext_target=self.f_ext_target,
+            f_ext_target=self.f_ext_target[:, : self.ns_mhe],
             kin_target=self.kin_target,
             biorbd_model=biorbd_model,
             previous_sol=previous_sol,
@@ -190,19 +223,19 @@ class MuscleForceEstimator:
             muscle_track_idx=self.muscle_track_idx,
         )
 
-        constraints = define_constraint(
-            f_ext_target=self.f_ext_target,
-            with_f_ext=self.with_f_ext,
-            f_ext_as_constraints=self.f_ext_as_constraints,
-        )
+        # constraints = define_constraint(
+        #     f_ext_target=self.f_ext_target,
+        #     with_f_ext=self.with_f_ext,
+        #     f_ext_as_constraints=self.f_ext_as_constraints,
+        # )
 
         self.mhe, self.solver = prepare_problem(
             self.model_path,
             objectives,
-            constraints,
+            # constraints,
             window_len=window_len,
             window_duration=window_duration,
-            x0=self.x_ref,
+            x0=self.x_ref[:, : window_len + 1].copy(),
             u0=u0,
             f_ext_0=self.f_ext_target,
             f_ext_object=forces_object,
@@ -326,7 +359,6 @@ class MuscleForceEstimator:
                 self.__setattr__(key, var[key])
             else:
                 raise RuntimeError(f"{key} is not a variable of the class")
-
         self.model = BiorbdModel(self.model_path)
         initial_time = time()
         sol = self.mhe.solve(
@@ -336,6 +368,41 @@ class MuscleForceEstimator:
             export_options={"frame_to_export": self.frame_to_save},
             solver=self.solver,
         )
+        x_ref = self.offline_data[0]
+        states_tmp = sol[0]
+        controls_tmp = sol[1]
+        # states = sol.decision_states(to_merge=SolutionMerge.NODES)
+        # controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
+        states = {}
+        controls = {}
+        for key in states_tmp[0].keys():
+            states[key] = np.concatenate([states_tmp[i][key] for i in range(len(states_tmp))], axis=1)
+        for key in controls_tmp[0].keys():
+            controls[key] = np.concatenate([controls_tmp[i][key] for i in range(len(controls_tmp))], axis=1)
+
+        for key in states:
+            plt.figure(f"states_{key}")
+            for i in range(states[key].shape[0]):
+                plt.subplot(4, int(states[key].shape[0] // 4) + 1, i + 1)
+                plt.plot(states[key][i, :])
+                if key == "q":
+                    plt.plot(x_ref[i, :states[key].shape[1]], "r")
+                if key == "qdot":
+                    plt.plot(x_ref[i+self.nbQ, :states[key].shape[1]], "r")
+        muscle_idx = self.muscle_track_idx
+        for key in controls:
+            plt.figure(f"controls_{key}")
+            for i in range(controls[key].shape[0]):
+                plt.subplot(4, int(controls[key].shape[0] // 4) + 1, i + 1)
+                plt.plot(controls[key][i, :])
+                if key == "muscles":
+                    if i in muscle_idx:
+                        plt.plot(self.muscles_target[muscle_idx.index(i), ::self.interpol_factor][:controls[key].shape[1]], "r")
+                if key == "f_ext":
+                    plt.plot(self.f_ext_target[i, ::self.interpol_factor][:controls[key].shape[1]], "r")
+
+        plt.show()
+        # sol.graphs()
 
 
 if __name__ == "__main__":
@@ -343,10 +410,9 @@ if __name__ == "__main__":
     # data_dir = f"/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/data_gen/saves/"
     # result_dir = "results/results_w9"
     data_dir = "/mnt/shared/Projet_hand_bike_markerless/process_data"
-
     participants = ["P10"]
     init_trials = [["gear_10"]] * len(participants)
-    processed_source = ["depth"]
+    processed_source = ["vicon"]
     final_files = []
     for p, part in enumerate(participants):
         model_dir = f"/mnt/shared/Projet_hand_bike_markerless/process_data/{part}/models"
@@ -360,38 +426,71 @@ if __name__ == "__main__":
 
         # configs = [0.04, 0.05, 0.06, 0.07, 0.08, 0.09, 0.1, 0.11, 0.12]
         # exp_freq = [43, 38, 37, 34, 29, 27, 25, 24, 22]
-        configs = [0.08]
+        # data_dir = f"/home/amedeoceglia/Documents/programmation/code_paper_mhe_data/data_final_new/subject_3/C3D/"
+        # final_files = [[
+        #     "data_abd_sans_poid",
+        #     "data_abd_poid_2kg",
+        #     # "data_cycl_poid_2kg",
+        #     # "data_flex_poid_2kg",
+        #     # "data_flex_sans_poid",
+        #     # "data_cycl_sans_poid",
+        # ]]
+        # # configs = [0.09]
+        configs = [0.09]
         exp_freq = [30]
         for c, config in enumerate(configs):
             for t, trial in enumerate(final_files):
                 offline_path = trial
+                # offline_path = data_dir + f"{trial[p]}"
                 if not os.path.isdir(result_dir):
                     os.makedirs(result_dir)
                 solver_options = {
-                    "sim_method_jac_reuse": 1,
-                    "levenberg_marquardt": 50.0,
+                    # "sim_method_jac_reuse": 1,
+                    "levenberg_marquardt": 90.0,
                     "nlp_solver_step_length": 0.9,
-                    "qp_solver_iter_max": 1000,
+                    "qp_solver_iter_max": 5000,
                 }
 
-                model = f"{model_dir}/{init_trials[p][t]}_processed_3_model_scaled_depth.bioMod"
+                model = f"{model_dir}/{init_trials[p][t]}_processed_3_model_scaled_{processed_source[0]}.bioMod"
+                # model = f"/home/amedeoceglia/Documents/programmation/code_paper_mhe/data/wu_scaled.bioMod"
+
                 configuration_dic = {
                     "model_path": model,
                     "mhe_time": config,
                     "interpol_factor": 2,
+                    "source": processed_source[0],
                     "use_torque": True,
-                    "save_results": True,
+                    "save_results": False,
                     "track_emg": True,
-                    "with_f_ext": True,
+                    "with_f_ext": False,
                     "f_ext_as_constraints": False,
                     "kin_data_to_track": "markers",
+                    # "kin_data_to_track": "q",
                     "exp_freq": exp_freq[c],
                     "result_dir": result_dir,
-                    "result_file_name": f"result_mhe_{trial}",
+                    "result_file_name": f"result_mhe_{init_trials[p][t]}",
                     "solver_options": solver_options,
                     "weights": configure_weights(),
                     "frame_to_save": 0,
                     "save_all_frame": False,
+                    # "muscle_track_idx": [
+                    #     14,
+                    #     23,
+                    #     24,  # MVC Pectoralis sternalis
+                    #     13,  # MVC Deltoid anterior
+                    #     15,  # MVC Deltoid medial
+                    #     16,  # MVC Deltoid posterior
+                    #     26,
+                    #     27,  # MVC Biceps brachii
+                    #     28,
+                    #     29,
+                    #     30,  # MVC Triceps brachii
+                    #     11,
+                    #     1,  # MVC Trapezius superior bis
+                    #     2,  # MVC Trapezius medial
+                    #     3,  # MVC Trapezius inferior
+                    #     25,  # MVC Latissimus dorsi
+                    # ],
                     "emg_names": ["PECM",
                                   "bic",
                                   "tri",

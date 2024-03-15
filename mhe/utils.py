@@ -13,6 +13,7 @@ from scipy.interpolate import interp1d
 import os
 import scipy.io as sio
 import matplotlib.pyplot as plt
+from bioptim import SolutionMerge
 
 
 def check_and_adjust_dim(*args):
@@ -108,19 +109,21 @@ def compute_force(
     -------
     Tuple of the force, joint angles, activation and excitation.
     """
-    if frame_to_save >= sol.states["q"].shape[1] - 1 + slide_size:
+    states = sol.decision_states(to_merge=SolutionMerge.NODES)
+    controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
+    if frame_to_save >= states["q"].shape[1] - 1 + slide_size:
         raise RuntimeError(
-            f"You can ask to save frame from 0 to {sol.states['q'].shape[1] + slide_size}." f"You asked {frame_to_save}."
+            f"You can ask to save frame from 0 to {states['q'].shape[1] + slide_size}." f"You asked {frame_to_save}."
         )
     force_est = np.zeros((nbmt, slide_size))
     if not save_all_frame:
-        q_est = sol.states["q"][:, frame_to_save: frame_to_save + slide_size]
-        dq_est = sol.states["qdot"][:, frame_to_save: frame_to_save + slide_size]
-        a_est = sol.controls["muscles"][:, frame_to_save: frame_to_save + slide_size]
+        q_est = states["q"][:, frame_to_save: frame_to_save + slide_size]
+        dq_est = states["qdot"][:, frame_to_save: frame_to_save + slide_size]
+        a_est = controls["muscles"][:, frame_to_save: frame_to_save + slide_size]
     else:
-        q_est = sol.states["q"]
-        dq_est = sol.states["qdot"]
-        a_est = sol.controls["muscles"]
+        q_est = states["q"]
+        dq_est = states["qdot"]
+        a_est = controls["muscles"]
     u_est = a_est
     for i in range(nbmt):
         for j in range(slide_size):
@@ -165,10 +168,10 @@ def save_results(
     file_name = file_name if file_name else f"Results_mhe_{kin_data_to_track}{emg}{torque}_driven_{current_time}"
     file_name = file_name_prefix + file_name
     result_dir = result_dir if result_dir else f"results/results_{strftime('%Y%m%d-%H%M')[:8]}"
-    if not os.path.isdir(f"results/"):
-        os.mkdir(f"results/")
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
     data_path = f"{result_dir}/{file_name}"
-    save(data, data_path)
+    save(data, data_path, add_data=True)
 
 
 def map_activation(emg_proc, muscle_track_idx, model, emg_names, emg_init=None, mvc_normalized=True):
@@ -297,11 +300,60 @@ def interpolate_data(interp_factor: int, x_ref: np.ndarray, muscles_target: np.n
     return x_ref, markers_ref, muscles_target, f_ext_ref
 
 
-def load_data(data_path, filter_depth, win_size=1):
+def _convert_string(string):
+    return string.lower().replace("_", "")
+
+
+def reorder_markers(markers, model, names):
+    model_marker_names = [_convert_string(model.markerNames()[i].to_string()) for i in range(model.nbMarkers())]
+    assert len(model_marker_names) == len(names)
+    assert len(model_marker_names) == markers.shape[1]
+    count = 0
+    reordered_markers = np.zeros((markers.shape[0], len(model_marker_names), markers.shape[2]))
+    for i in range(len(names)):
+        if names[i] == "elb":
+            names[i] = "elbow"
+        if _convert_string(names[i]) in model_marker_names:
+            reordered_markers[:, model_marker_names.index(_convert_string(names[i])),
+            :] = markers[:, count, :]
+            count += 1
+    return reordered_markers
+
+
+def get_data(ip=None, port=None, message=None, offline=False, offline_file_path=None):
+    if offline:
+        nfinal = -400
+        n_init = 500
+        if offline_file_path[-4:] == ".mat":
+            mat = sio.loadmat(offline_file_path)
+            x_ref, markers, muscles = mat["kalman"], mat["markers"], mat["emg_proc"]
+
+        else:
+            mat = load(offline_file_path)
+            try:
+                x_ref, markers, muscles = mat["kalman"][:, n_init:nfinal], mat["kin_target"][:, :, n_init:nfinal], mat["muscles_target"][:, n_init:nfinal]
+            except:
+                x_ref, markers, muscles = (
+                    mat["kalman"][:, n_init:nfinal],
+                    mat["markers"][:, :, n_init:nfinal],
+                    mat["emg_proc"][:, n_init:nfinal],
+                )
+        return x_ref, markers, muscles
+    else:
+        client = Client(ip, port, "TCP")
+        return client.get_data(message)
+
+
+
+def load_data(data_path, filter_depth, win_size=1, source="depth"):
     data = load(data_path)
-    markers_depth = data["markers_depth_interpolated"][:, :-3, :]
+    if source == "depth":
+        markers = data["markers_depth_interpolated"][:, :, :]
+    elif source == "vicon":
+        markers = data["truncated_markers_vicon"]
+
     sensix_data = data["sensix_data_interpolated"]
-    depth_markers_names = data["depth_markers_names"]
+    depth_markers_names = data[f"{source}_markers_names"]
     idx_ts = depth_markers_names.index("scapts")
     idx_ai = depth_markers_names.index("scapia")
     depth_markers_names[idx_ts] = "scapia"
@@ -311,11 +363,11 @@ def load_data(data_path, filter_depth, win_size=1):
     emg = data["emg_proc_interpolated"]
     if not isinstance(emg, np.ndarray):
         emg = None
-    markers_depth_filtered = np.zeros((3, markers_depth.shape[1], markers_depth.shape[2]))
+    markers_depth_filtered = np.zeros((3, markers.shape[1], markers.shape[2]))
     for i in range(3):
-        markers_depth_filtered[i, :, :] = OfflineProcessing().butter_lowpass_filter(markers_depth[i, :, :],
+        markers_depth_filtered[i, :, :] = OfflineProcessing().butter_lowpass_filter(markers[i, :, :],
                                                                                     4, 120, 4)
-    depth = markers_depth_filtered if filter_depth else markers_depth
+    depth = markers_depth_filtered if filter_depth else markers
     markers_from_source = depth
     # plt.figure("markers")
     # for i in range(markers_depth_filtered.shape[1]):
