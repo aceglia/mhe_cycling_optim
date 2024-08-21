@@ -23,7 +23,7 @@ if __name__ == "__main__":
     data_markers = data_markers[:3, :, :]*0.001
     idx = np.argwhere(np.isnan(data_markers))
     for i in range (idx):
-
+        pass
     # markers_ref = np.zeros((3, data_markers.shape[1], int(data_markers.shape[2])))
     # for i in range(3):
     #     x = np.linspace(0, data_markers.shape[2] / 100, data_markers.shape[2])
