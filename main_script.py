@@ -129,7 +129,7 @@ class MuscleForceEstimator:
         for i in range(biorbd_model.nb_q):
             self.dof_names.append(biorbd_model.name_dof[i])
 
-    def _update_params(self, biorbd_model, parameters_file_path, with_casadi=False, ratio=True):
+    def _update_params(self, biorbd_model, parameters_file_path, with_casadi=False, ratio=True, suffix=""):
         with open(biorbd_model, "r") as file:
             str_model = file.read()
         param_model = biorbd_eigen.Model(biorbd_model)
@@ -181,16 +181,19 @@ class MuscleForceEstimator:
             start_idx = end_idx
             count += 1
         param_model = None
-        with open(biorbd_model[:-7] + "_params.bioMod", "w") as file:
+        with open(biorbd_model[:-7] + f"_params{suffix}.bioMod", "w") as file:
             file.write(str_model_tmp)
-        return biorbd_model[:-7] + "_params.bioMod"
+        return biorbd_model[:-7] + f"_params{suffix}.bioMod"
 
     def prepare_problem_init(self):
         """
         Prepare the mhe problem.
         """
         if self.use_optim_params:
-           self.model_path = self._update_params(self.model_path, self.parameters_file_path, with_casadi=False, ratio=True)
+            suffix = "_id" if "_id" in mhe_result_filename else "_fd"
+            suffix = "id"
+            self.model_path = self._update_params(self.model_path, self.parameters_file_path,
+                                                  with_casadi=False, ratio=True, suffix=suffix)
         self.biorbd_model = BiorbdModel(self.model_path)
         # Old data :
         # x_ref, markers_target, emg = get_data(offline=True, offline_file_path=self.offline_file)
@@ -426,83 +429,102 @@ if __name__ == "__main__":
     else:
         prefix = "Q:/"
     participants = ["P10"]
-    init_trials = [["gear_20"]] * len(participants)
+    participants = [f"P{i}" for i in range(10, 17)]
+    participants.pop(participants.index("P12"))
+    participants.pop(participants.index("P15"))
+    participants.pop(participants.index("P16"))
+    #participants = ["P10"]
+    init_trials = [["gear_5", "gear_10", "gear_15", "gear_20"]] * len(participants)
+    # init_trials = [["gear_20", "gear_10", "gear_15", "gear_20"]] * len(participants)
+
     processed_source = ["dlc_1"]
     processed_data_path = prefix + "/Projet_hand_bike_markerless/RGBD"
     configs = [0.08]
     exp_freq = [30]
     dlc_model = "normal_500_down_b1"
-    use_optim_params = [True, False]
+    use_optim_params = [True, False]#, False]
+    dyn = ["id", "fd"]
     #for c, config in enumerate(configs):
     #c = True
     for p, part in enumerate(participants):
         model_dir = prefix + f"/Projet_hand_bike_markerless/RGBD/{part}/models"
-        parameters_file_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param.bio"
-        result_dir = f"results/{part}"
+        # result_dir = f"results/{part}"
+        result_dir = f"/mnt/shared/Projet_hand_bike_markerless/optim_params/results/{part}"
         for t, trial in enumerate(init_trials[p]):
             for c in use_optim_params:
-                # dir = os.listdir(processed_data_path + f"/{part}")
-                # dir = [d for d in dir if trial in d][0]
-                data = data_dir + f"/{part}/" + f"result_biomech_{trial}_{dlc_model}_no_root.bio"
-                # offline_path = data_dir + f"{trial[p]}"
-                if not os.path.isdir(result_dir):
-                    os.makedirs(result_dir)
-                solver_options = {
-                    "sim_method_jac_reuse": 1,
-                    "levenberg_marquardt": 90.0,
-                    "nlp_solver_step_length": 0.9,
-                    "qp_solver_iter_max": 10000,
-                }
-                # solver_options = {
-                #     "print_info_string": "yes",
-                # }
-                if os.path.isfile(result_dir + os.sep + f"result_mhe_{trial}_{processed_source[0]}_optim_param_{c}.bio"):
-                    os.remove(result_dir + os.sep + f"result_mhe_{trial}_{processed_source[0]}_optim_param_{c}.bio")
-                model = f"{model_dir}/{trial}_model_scaled_dlc_ribs_new_seth.bioMod"
-                #model = _remove_root_dofs(model)
-                configuration_dic = {
-                    "model_path": model,
-                    "mhe_time": configs[0],
-                    "offline_file": data,
-                    "interpol_factor": 2,
-                    "source": processed_source[0],
-                    "use_torque": True,
-                    "save_results": True,
-                    "track_emg": True,
-                    "with_f_ext": True,
-                    "f_ext_as_constraints": False,
-                    "parameters_file_path": parameters_file_path,
-                    "kin_data_to_track": "markers",
-                    # "kin_data_to_track": "q",
-                    "exp_freq": exp_freq[0],
-                    "result_dir": result_dir,
-                    "result_file_name": f"result_mhe_{trial}_{processed_source[0]}_optim_param_{c}.bio",
-                    "solver_options": solver_options,
-                    "weights": configure_weights(),
-                    "frame_to_save": 0,
-                    "save_all_frame": True,
-                    "part": part,
-                    "use_acados": True,
-                    "use_optim_params": c,
-                    # "emg_names": ["PECM",
-                    #               "bic",
-                    #               "tri",
-                    #               "LAT",
-                    #               'TRP1',
-                    #               "DELT1",
-                    #               'DELT2',
-                    #               'DELT3']
-                    "emg_names" : ["PectoralisMajorThorax",
-                     "BIC",
-                     "TRI",
-                     "LatissimusDorsi",
-                     'TrapeziusScapula_S',
-                     #'TrapeziusClavicle',
-                     "DeltoideusClavicle_A",
-                     'DeltoideusScapula_M',
-                      'DeltoideusScapula_P']
-                }
-                variables_dic = {"print_lvl": 1}  # print level 0 = no print, 1 = print information
-                MHE = MuscleForceEstimator(configuration_dic)
-                MHE.run_mhe(variables_dic, [])
-            #break
+                dyn_tmp = [""] if c is False else dyn
+                for dy in dyn_tmp:
+                    suffix = "_id" if dy == "id" else ""
+                    parameters_file_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_{trial_short}_{file_suffix}_{c}_test.bio"
+                    if_dyn = f"_{dy}" if dy != "" else ""
+                    mhe_result_filename = result_dir + os.sep + f"result_mhe_{trial}_{processed_source[0]}_optim_param_{c}{if_dyn}_full.bio"
+                    print("working on", part, dy, trial, c)
+                    # dir = os.listdir(processed_data_path + f"/{part}")
+                    # dir = [d for d in dir if trial in d][0]
+                    data = data_dir + f"/{part}/" + f"result_biomech_{trial}_{dlc_model}_no_root.bio"
+                    # offline_path = data_dir + f"{trial[p]}"
+                    if not os.path.isdir(result_dir):
+                        os.makedirs(result_dir)
+                    solver_options = {
+                        "sim_method_jac_reuse": 1,
+                        "levenberg_marquardt": 90.0,
+                        "nlp_solver_step_length": 0.9,
+                        "qp_solver_iter_max": 10000,
+                    }
+                    # solver_options = {
+                    #     "print_info_string": "yes",
+                    # }
+                    if os.path.isfile(mhe_result_filename):
+                        os.remove(mhe_result_filename)
+                    model = f"{model_dir}/{trial}_model_scaled_dlc_ribs_new_seth_param.bioMod"
+                    #model = _remove_root_dofs(model)
+                    configuration_dic = {
+                        "model_path": model,
+                        "mhe_time": configs[0],
+                        "offline_file": data,
+                        "interpol_factor": 1,
+                        "source": processed_source[0],
+                        "use_torque": True,
+                        "save_results": True,
+                        "track_emg": True,
+                        "with_f_ext": True,
+                        "f_ext_as_constraints": False,
+                        "parameters_file_path": parameters_file_path,
+                        "kin_data_to_track": "markers",
+                        # "kin_data_to_track": "q",
+                        "exp_freq": exp_freq[0],
+                        "result_dir": result_dir,
+                        "result_file_name": f"result_mhe_{trial}_{processed_source[0]}_optim_param_{c}{if_dyn}_full.bio",
+                        "solver_options": solver_options,
+                        "weights": configure_weights(),
+                        "frame_to_save": 0,
+                        "save_all_frame": True,
+                        "part": part,
+                        "use_acados": True,
+                        "use_optim_params": c,
+                        # "emg_names": ["PECM",
+                        #               "bic",
+                        #               "tri",
+                        #               "LAT",
+                        #               'TRP1',
+                        #               "DELT1",
+                        #               'DELT2',
+                        #               'DELT3']
+                        "emg_names" : ["PectoralisMajorThorax",
+                         "BIC",
+                         "TRI",
+                         "LatissimusDorsi",
+                         'TrapeziusScapula_S',
+                         #'TrapeziusClavicle',
+                         "DeltoideusClavicle_A",
+                         'DeltoideusScapula_M',
+                          'DeltoideusScapula_P']
+                    }
+                    variables_dic = {"print_lvl": 1}  # print level 0 = no print, 1 = print information
+                    try:
+                        MHE = MuscleForceEstimator(configuration_dic)
+                        MHE.run_mhe(variables_dic, [])
+                    except Exception as e:
+                        print(e)
+                        print("warning")
+                #break

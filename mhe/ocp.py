@@ -472,13 +472,13 @@ def configure_weights():
     weights = {
     "min_dq": 10,
     "min_q": 1,
-    "min_torque": 100,
+    "min_torque": 500,
     "min_activation": 100,
-    "min_tracked_activation": 1,
-    "track_emg": 500000,
+    "min_tracked_activation": 10,
+    "track_emg": 1000000,
     "previous_q": 100,
     "previous_q_dot": 100,
-    "track_kin": 10000000,
+    "track_kin": 100000000,
     "f_ext": 10000000,
     }
 
@@ -677,7 +677,6 @@ def update_mhe(mhe, t: int, sol: bioptim.Solution, ei, initial_time: float):
     muscles_ref = ei.muscles_target[:, slide_size * t: slide_size * t + ns_mhe + 1][..., :-1].copy()
     f_ext_ref = ei.f_ext_target[:, slide_size * t: slide_size * t + ns_mhe + 1][..., :-1].copy()
     tic = time()
-
     mhe = get_target(
         mhe=mhe,
         x_ref=x_ref,
@@ -694,7 +693,7 @@ def update_mhe(mhe, t: int, sol: bioptim.Solution, ei, initial_time: float):
 
     stat = -1
     if t > 0:
-        stat = sol.status # if sol.status != 0 else -1
+        stat = sol.status  # if sol.status != 0 else -1
         tmp_slide_size = ei.slide_size
         ei.slide_size = 1
         q_est, dq_est, a_est, u_est, force_est, f_ext, tau = compute_force(
@@ -761,7 +760,7 @@ def update_mhe(mhe, t: int, sol: bioptim.Solution, ei, initial_time: float):
             sleep((1 / ei.exp_freq) - time_tot)
         ei.slide_size = tmp_slide_size
 
-    if t == 1:
+    if t == 810:
         # plt.figure("n")
         # plt.plot()
         # plt.show()
@@ -769,10 +768,10 @@ def update_mhe(mhe, t: int, sol: bioptim.Solution, ei, initial_time: float):
     else:
         return True
     # try:
-    #     if target["kin_target"][1].shape[2] > ei.ns_mhe:
+    #     if mhe.kin_target.shape[2] > ei.ns_mhe:
     #         return True
     # except:
-    #     if target["kin_target"][1].shape[1] > ei.ns_mhe:
+    #     if mhe.kin_target.shape[1] > ei.ns_mhe:
     #         return True
     # else:
     #     return False

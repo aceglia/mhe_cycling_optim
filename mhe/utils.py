@@ -206,10 +206,17 @@ def get_data(ip=None, port=None, message=None, offline=False, offline_file_path=
     return x_ref, markers, muscles
 
 
-def apply_params(model, file_path, with_casadi=True, ratio=True):
-    data = load(file_path)
-    param_list = data["p"]
-    params_to_optim = data["optimized_params"]
+def apply_params(model, file_path=None, params=None, optimized_params=None, with_casadi=True, ratio=True):
+    if file_path:
+        data = load(file_path, merge=False)[4] # [4]
+        param_list = data["p"]
+        params_to_optim = data["optimized_params"]
+    elif params is not None:
+        param_list = params
+        params_to_optim = optimized_params
+    else:
+        raise RuntimeError("provide at least the params or the path")
+
     model = model.model if isinstance(model, BiorbdModel) else model
     for k in range(model.nbMuscles()):
         if "f_iso" in params_to_optim:
@@ -300,6 +307,10 @@ def load_data(data_path, filter_depth, model, muscle_track_idx, emg_names, part,
     )
     return offline_data, markers_target, names_from_source, f_ext, muscles_target, x_ref
 
+def get_ratio(model, use_casadi=True):
+    ratio = [model.muscle(k).characteristics().tendonSlackLength() / model.muscle(
+        k).characteristics().optimalLength() for k in range(model.nbMuscles())]
+    return ratio
 
 def get_tracking_idx(model, emg_names):
     muscle_list = []
