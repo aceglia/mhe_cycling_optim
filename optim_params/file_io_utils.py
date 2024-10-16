@@ -17,11 +17,11 @@ def get_experimental_data(file_path, n_start=0, n_stop=None, source="dlc_1", dow
     names = data[source]["marker_names"]
     ia_idx = names.index("SCAP_IA")
     ts_idx = names.index("SCAP_TS")
-    mark_ia = data[source][f"markers"][:, ia_idx, :].copy()
-    mark_ts = data[source][f"markers"][:, ts_idx, :].copy()
-    data[source][f"markers"][:, ia_idx, :] = mark_ts
-    data[source][f"markers"][:, ts_idx, :] = mark_ia
-    out_dict["markers_target"] = data[source][f"markers"][:, :, n_start:n_stop][..., ::downsample]
+    mark_ia = data[source][f"tracked_markers"][:, ia_idx, :].copy()
+    mark_ts = data[source][f"tracked_markers"][:, ts_idx, :].copy()
+    data[source][f"tracked_markers"][:, ia_idx, :] = mark_ts
+    data[source][f"tracked_markers"][:, ts_idx, :] = mark_ia
+    out_dict["markers_target"] = data[source][f"tracked_markers"][:, :, n_start:n_stop][..., ::downsample]
     return out_dict
 
 def get_all_file(participants, data_dir, trial_names=None, to_include=(), to_exclude=()):

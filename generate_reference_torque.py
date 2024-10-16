@@ -31,12 +31,12 @@ if __name__ == '__main__':
         trial_short = file.split("/")[-1].split("_")[0] + "_" + file.split("/")[-1].split("_")[1]
         file_path = prefix + f"/Projet_hand_bike_markerless/process_data/{participant}" + f"/result_biomech_{trial_short}_normal_500_down_b1.bio"
         torque_estimator = TorqueEstimator()
-        torque_estimator.init_experimental_data(get_experimental_data(file_path, source="dlc_1", downsample=2))
+        torque_estimator.init_experimental_data(get_experimental_data(file_path, source="dlc_1", downsample=2, n_stop=1000))
         biorbd_model_path = (f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{participant}/models/{trial_short}_model_scaled_dlc_ribs_new_seth_param.bioMod")
         torque_estimator.init_ocp(biorbd_model_path,
                                   final_time,
                                   n_shooting,
-                                  with_external_loads=False,
+                                  with_external_loads=True,
                                   use_mhe=with_mhe,
                                   track_previous=False,
                                   weights=get_ocp_weights()

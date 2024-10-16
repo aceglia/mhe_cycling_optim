@@ -18,7 +18,7 @@ class ParametersIdentifier:
         self.symbolics = None
         self.mx_variables = None
 
-    def load_experimental_data(self, data:dict, prepare_data_function=None, **kwags):
+    def load_experimental_data(self, data:dict, prepare_data_function=None, **kwargs):
         self.tau = data['reference_torque']
         self.q = data['q']
         self.q_dot = data['q_dot']
@@ -50,7 +50,7 @@ class ParametersIdentifier:
                            params_to_optim:list,
                            biorbd_model_path:str,
                            p_mapping:list,
-                           muscle_list:list, use_p_mapping=True, with_param=True,
+                           muscle_list:list, with_param=True,
                            with_torque=True, torque_as_constraint=False, ignore_dof=None,
                            emg_proc=None, emg_names=None, muscle_track_idx=None,
                            passive_torque_idx=None, scaling_factor=1, len_fct=None, weights=None, **kwargs):
@@ -76,19 +76,6 @@ class ParametersIdentifier:
                                       model_params_init=model_param_init,
                                                  ratio=ratio_init)
 
-        weights = {"tau_tracking": 2,
-                   "activation_tracking": 10,
-                   "min_act": 1,
-                   "min_f_iso": 5,
-                   "min_lm_optim": 5,
-                   "min_lt_slack": 100,
-                   "min_pas_torque": 0.6,
-                   "ratio_tracking": 1,
-                   "dynamics": 100}
-
-        # create n dependant function
-        # ml = len_fct(model, q_sym)
-        # len_ca_funct = Function("len_fct", [q_sym], [ml]).expand()
         j = get_cost_n_dependant(scaling_factor, self.symbolics,
                                   weights,
                                   p_mapping=p_mapping,
@@ -105,7 +92,7 @@ class ParametersIdentifier:
             symlist.append(pas_tau_sym)
         if with_param:
             symlist.append(p_sym)
-        J_func = Function("J1", symlist, [J]).expand()
+        J_func = Function("J1", symlist, [j]).expand()
         J_mapped = J_func.map(ns, "thread", 4)
         # obj_1 = J_func(x_sym, q, qdot, tau, p_sym, pas_tau_sym, emg)
         x_all = MX.sym("x_all", model.nbMuscles() * ns)

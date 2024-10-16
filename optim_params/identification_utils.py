@@ -1,6 +1,7 @@
 from biosiglive import load
 import numpy as np
 from casadi import Function, vertcat
+from scipy.interpolate import interp1d
 
 
 def get_initial_values(model, params_to_optim):
@@ -128,6 +129,57 @@ def return_param_from_mapping(p_mapping, p_init):
         final_param_list.append(p_tmp)
         count += len(mapping[0])
     return final_param_list
+
+
+def _interpolate_data(markers_depth, shape):
+    new_markers_depth_int = np.zeros((3, markers_depth.shape[1], shape))
+    for i in range(markers_depth.shape[0]):
+        x = np.linspace(0, 100, markers_depth.shape[2])
+        f_mark = interp1d(x, markers_depth[i, :, :])
+        x_new = np.linspace(0, 100, int(new_markers_depth_int.shape[2]))
+        new_markers_depth_int[i, :, :] = f_mark(x_new)
+    return new_markers_depth_int
+
+
+def _interpolate_data_2d(data, shape):
+    new_data = np.zeros((data.shape[0], shape))
+    x = np.linspace(0, 100, data.shape[1])
+    f_mark = interp1d(x, data)
+    x_new = np.linspace(0, 100, int(new_data.shape[1]))
+    new_data = f_mark(x_new)
+    return new_data
+
+
+def process_cycles(all_results, peaks, n_peaks=None, interpolation_size=120, remove_outliers=False):
+    data_size = all_results["q"].shape[1]
+    dic_tmp = {}
+    for key2 in all_results.keys():
+        if key2 == "cycle" or key2 == "rt_matrix" or key2 == "marker_names":
+            continue
+        array_tmp = None
+        if not isinstance(all_results[key2], np.ndarray):
+            dic_tmp[key2] = []
+            continue
+        if n_peaks and n_peaks > len(peaks) - 1:
+            raise ValueError("n_peaks should be less than the number of peaks")
+        for k in range(len(peaks) - 1):
+            if peaks[k + 1] > data_size:
+                break
+            interp_function = _interpolate_data_2d if len(all_results[key2].shape) == 2 else _interpolate_data
+            if array_tmp is None:
+                array_tmp = interp_function(all_results[key2][..., peaks[k]:peaks[k + 1]], interpolation_size)
+                array_tmp = array_tmp[None, ...]
+            else:
+                data_interp = interp_function(all_results[key2][..., peaks[k]:peaks[k + 1]], interpolation_size)
+                array_tmp = np.concatenate((array_tmp, data_interp[None, ...]), axis=0)
+        dic_tmp[key2] = array_tmp
+    key_to_check = ["q", "tau", "emg"]
+    if remove_outliers:
+        for key in key_to_check:
+            if key in dic_tmp.keys():
+                dic_tmp[key] = _remove_outliers(dic_tmp[key])
+    all_results["cycles"] = dic_tmp
+    return all_results
 
 
 def apply_params(model, param_list, params_to_optim, model_param_init=None, with_casadi=True, ratio=None):
