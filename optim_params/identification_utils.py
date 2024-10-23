@@ -1,10 +1,27 @@
 from biosiglive import load
 import numpy as np
-from casadi import Function, vertcat
+from casadi import Function, vertcat, MX
+import casadi as ca
 from scipy.interpolate import interp1d
+import random
+import itertools
 
 
-def get_initial_values(model, params_to_optim):
+def get_all_muscle_len(model, q):
+    mus_list = np.zeros((model.nbMuscles(), q.shape[1]))
+    for i in range(q.shape[1]):
+        for m in range(model.nbMuscles()):
+            mus_list[m, i] = model.muscle(m).length(model, q[:, i])
+    return mus_list
+
+
+def generate_random_idx(n_cycles, batch, n_data):
+    #random.seed(10)
+    combinations = list(itertools.combinations(list(range(1, int(n_data-1))), n_cycles))
+    random_idx = random.sample(range(0, len(combinations)), batch)
+    return [list(combinations[i]) for i in random_idx]
+
+def get_initial_parameters(model, params_to_optim):
     model_param_init = []
     for p in params_to_optim:
         if p == "f_iso":
@@ -67,7 +84,7 @@ def return_muscle_torque_function(model, symbolics,
     return mjt_func
 
 
-def get_cost_n_dependant(scaling_factor, symbolics, weights,
+def get_cost_to_map(scaling_factor, symbolics, weights,
                            p_mapping=None,
                            with_torque=True,
                            muscle_track_idx=None,
@@ -103,6 +120,105 @@ def get_cost_n_dependant(scaling_factor, symbolics, weights,
         factor = 0.3 if t == 3 else 1
         j += (weights["tau_tracking"] * factor * (tau[t] * scaling_factor[2] - to_substract)) ** sqrt
     return j
+
+def get_cost_n_dependant(p, p_mapping, params_to_optim, scaling_factor,weights, use_ratio_tracking=False,  param_init=None,
+                     bounds_l_norm=False, muscle_len=None):
+    lm_opti, lt_slack = None, None
+    count = 0
+    J_params = 0
+    g = []
+    # p = ca.MX.sym("p_sym_bis", len(p_mapping) * len(p_mapping[0][0]))
+    for p_idx in range(len(p_mapping)):
+        # J = _add_to_J(J, weights[f"min_{params_to_optim[p_idx]}"],
+        #               (p[count: count + len(p_mapping[p_idx][0])] - 1 * scaling_factor[1]))
+        p_tmp = p[count: count + len(p_mapping[p_idx][0])]
+        for p_idx_bis in range(p_tmp.shape[0]):
+            J_params += (weights[f"min_{params_to_optim[p_idx]}"] * (p_tmp[p_idx_bis] - 1 * scaling_factor[1][p_idx])) ** 2
+        if use_ratio_tracking:
+            if params_to_optim[p_idx] == "lm_optim":
+                lm_opti = p[count: count + len(p_mapping[p_idx][0])]
+            if params_to_optim[p_idx] == "lt_slack":
+                lt_slack = p[count: count + len(p_mapping[p_idx][0])]
+        count += len(p_mapping[p_idx][0])
+
+    #norm_len = MX(muscle_len) / (lm_opti / MX(scaling_factor[1][params_to_optim.index("lm_optim")]))
+    #for i in range(lm_opti.shape[0]):
+    #    #J_params += (10000 * ca.sum2(norm_len[i, :] - 1)) **2
+    #    J_params += ca.sum2((1-tanh(1000*(norm_len[i, :]-0.7))) * 1000) **2
+
+    if bounds_l_norm and "lm_optim" in params_to_optim and muscle_len is not None:
+        ratio_l = ca.fabs(MX(muscle_len) / (lm_opti / MX(scaling_factor[1][params_to_optim.index("lm_optim")])))
+        for i in range(ratio_l.shape[1]):
+            g = vertcat(g, ratio_l[:, i])
+        # for m in range(ratio_l.shape[0]):
+        #     for k in range(ratio_l.shape[1]):
+        #         if g is None:
+        #             g = ratio_l[m, k]
+        #         else:
+        #             g += ratio_l[m, k]
+
+    if use_ratio_tracking and "lt_slack" in params_to_optim and "lm_optim" in params_to_optim:
+        for i in range(lm_opti.shape[0]):
+            lm_init = param_init[params_to_optim.index("lm_optim")][i]
+            lt_init = param_init[params_to_optim.index("lt_slack")][i]
+            lm_optimized = lm_init * lm_opti[i]
+            lt_slack_optimized = lt_init * lt_slack[i]
+            ratio = lt_init / lm_init
+            J_params += (weights["ratio_tracking"] * (lt_slack_optimized / lm_optimized - ratio)) ** 2
+    #     J = _add_to_J(J, weights["ratio_tracking"], to_minimize)
+    if isinstance(g, list) and len(g) == 0:
+        g = None
+    return J_params, g
+
+def get_initial_values(model, passive_torque_idx, ns, muscle_track_idx, act, scaling_factor):
+    tau_init = np.zeros((len(passive_torque_idx) * ns))
+    x0 = np.zeros((model.nbMuscles() * ns, 1)) + 0.2 * scaling_factor[0]
+    for i in range(ns):
+        for m in range(model.nbMuscles()):
+            if m in muscle_track_idx:
+                idx = muscle_track_idx.index(m)
+                x0[i * model.nbMuscles() + m] = act[idx, i] * scaling_factor[0]
+
+    return x0, tau_init
+
+def return_bounds(model, scaling_factor, p, ns, x, pas_tau, x0, tau_0, with_param=True, with_torque=True,
+                   p_init=1, params_to_optim=(), p_mapping=None, param_bounds=None, l_norm_bounded=False, tau_bounds=50):
+    lbx = ca.DM.zeros(model.nbMuscles() * (ns)) + (0.0001) * scaling_factor[0]
+    ubx = ca.DM.ones(model.nbMuscles() * (ns)) * scaling_factor[0]
+    lbg, ubg = None, None
+    if l_norm_bounded:
+        if "lm_optim" in params_to_optim:
+            ubg = 1.6
+            lbg = 0.4
+
+    if with_param:
+        lb_p = None
+        ub_p = None
+        init_p = None
+        for p_idx, param in enumerate(params_to_optim):
+            lb, ub = param_bounds[p_idx][0], param_bounds[p_idx][1]
+            n_p = len(p_mapping[p_idx][0])
+            init_p = ca.DM.zeros(n_p) + p_init * scaling_factor[1][p_idx] if init_p is None else ca.vertcat(init_p,
+                                                                                             ca.DM.zeros(n_p) + p_init * scaling_factor[1][p_idx])
+            lb_p = ca.DM.zeros(n_p) + lb * scaling_factor[1][p_idx] if lb_p is None else ca.vertcat(lb_p,
+                                                                                             ca.DM.zeros(n_p) + lb *
+                                                                                             scaling_factor[1][p_idx])
+            ub_p = ca.DM.zeros(n_p) + ub * scaling_factor[1][p_idx] if ub_p is None else ca.vertcat(ub_p,
+                                                                                             ca.DM.zeros(n_p) + ub *
+                                                                                             scaling_factor[1][p_idx])
+        lbx = ca.vertcat(lbx, lb_p)
+        ubx = ca.vertcat(ubx, ub_p)
+        x0 = ca.vertcat(x0, init_p)
+        x = ca.vertcat(x, p)
+    if with_torque:
+        lb_tau = ca.DM.ones(tau_0.shape[0]) * (-tau_bounds) * scaling_factor[2]
+        ub_tau = ca.DM.ones(tau_0.shape[0]) * tau_bounds * scaling_factor[2]
+        init_tau = tau_0
+        lbx = ca.vertcat(lbx, lb_tau)
+        ubx = ca.vertcat(ubx, ub_tau)
+        x0 = ca.vertcat(x0, init_tau)
+        x = ca.vertcat(x, pas_tau)
+    return {"lbx": lbx, "ubx": ubx, "lbg": lbg, "ubg": ubg, "x0": x0, "x": x}
 
 
 def _get_muscle_torque(x, q, qdot, p, p_mapping, muscle_casadi_function, scaling_factor, with_param=True):
@@ -150,8 +266,14 @@ def _interpolate_data_2d(data, shape):
     return new_data
 
 
-def process_cycles(all_results, peaks, n_peaks=None, interpolation_size=120, remove_outliers=False):
-    data_size = all_results["q"].shape[1]
+def _remove_outliers(data):
+    new_data = np.zeros_like(data)
+    std_outliers = np.std(data, axis=0)
+    return new_data
+
+def process_cycles(all_results, peaks, interpolation_size=120, remove_outliers=False, key__to_check = ["q", "tau", "emg"]):
+    kay_for_size = [key for key in all_results.keys() if "q" in key and isinstance(all_results[key], np.ndarray)][0]
+    data_size = all_results[kay_for_size].shape[1]
     dic_tmp = {}
     for key2 in all_results.keys():
         if key2 == "cycle" or key2 == "rt_matrix" or key2 == "marker_names":
@@ -160,8 +282,6 @@ def process_cycles(all_results, peaks, n_peaks=None, interpolation_size=120, rem
         if not isinstance(all_results[key2], np.ndarray):
             dic_tmp[key2] = []
             continue
-        if n_peaks and n_peaks > len(peaks) - 1:
-            raise ValueError("n_peaks should be less than the number of peaks")
         for k in range(len(peaks) - 1):
             if peaks[k + 1] > data_size:
                 break
@@ -208,39 +328,5 @@ def apply_params(model, param_list, params_to_optim, model_param_init=None, with
             model.muscle(k).characteristics().setTendonSlackLength(l_init * param_tmp)
     return model
 
-
-def prepare_data(q, q_dot, tau, emg, em_delay=None, data_rate=100, peaks=None):
-    em_delay_frame = int(em_delay * data_rate)
-    if em_delay_frame != 0:
-        for key in ocp_result.keys():
-            if "q" in key or "qdot" in key or "tau" in key or "f_ext" in key:
-                ocp_result[key] = ocp_result[key][:, em_delay_frame:]
-            if "emg" in key:
-                ocp_result[key] = ocp_result[key][:, :-em_delay_frame] if em_delay != 0 else ocp_result[key][..., :]
-    ocp_result = process_cycles(ocp_result, peaks, interpolation_size=rate, remove_outliers=False)
-    q, qdot, tau, f_ext, emg_proc = ocp_result["cycles"]["q" + suffix], ocp_result["cycles"]["qdot" + suffix], \
-        ocp_result["cycles"]["tau" + suffix], ocp_result["cycles"]["f_ext"], ocp_result["cycles"]["emg"]
-    if cycle > q.shape[0] - 1:
-        raise ValueError("cycle should be less than the number of cycles")
-    q, qdot, tau, f_ext, emg_proc = q[random_idx_list, ...], qdot[random_idx_list, ...], tau[random_idx_list, ...], \
-        f_ext[random_idx_list, ...], emg_proc[random_idx_list, ...]
-    q_final = np.zeros((q.shape[1], n_frame_cycle * cycle))
-    qdot_final = np.zeros((qdot.shape[1], n_frame_cycle * cycle))
-    tau_final = np.zeros((tau.shape[1], n_frame_cycle * cycle))
-    f_ext_final = np.zeros((f_ext.shape[1], n_frame_cycle * cycle))
-    emg_proc_final = np.zeros((emg_proc.shape[1], n_frame_cycle * cycle))
-    for i in range(cycle):
-        #     q_filtered = OfflineProcessing().butter_lowpass_filter(q[i, :],
-        #                                                            6, 60, 2)
-        #     qdot_filtered = OfflineProcessing().butter_lowpass_filter(qdot[i, :],
-        #                                                            6, 60, 2)
-        #     tau_filtered = OfflineProcessing().butter_lowpass_filter(tau[i, :],
-        #                                                            6, 60, 2)
-        q_final[:, i * n_frame_cycle:(i + 1) * n_frame_cycle] = q[i, :, ::ratio]
-        qdot_final[:, i * n_frame_cycle:(i + 1) * n_frame_cycle] = qdot[i, :, ::ratio]
-        tau_final[:, i * n_frame_cycle:(i + 1) * n_frame_cycle] = tau[i, :, ::ratio]
-        f_ext_final[:, i * n_frame_cycle:(i + 1) * n_frame_cycle] = f_ext[i, :, ::ratio]
-        emg_proc_final[:, i * n_frame_cycle:(i + 1) * n_frame_cycle] = emg_proc[i, :, ::ratio]
-    return q_final, qdot_final, tau_final, f_ext_final, emg_proc_final, random_idx_list
 
 

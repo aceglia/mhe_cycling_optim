@@ -1,5 +1,32 @@
 from biosiglive import load, save
 import os
+from optim_params.identification_utils import process_cycles, generate_random_idx
+import numpy as np
+from scipy.signal import find_peaks
+import matplotlib.pyplot as plt
+
+
+def get_data_dict(file_path, n_cycles=1, batch_size=1, rate=120, cycle_size=60, from_id=False,  em_delay=0):
+    suffix = "_ocp" if not from_id else "_id"
+    ocp_result = load(file_path)
+    peaks = find_peaks(ocp_result["q" + suffix][-2, :], height=0.5)[0]
+    em_delay_frame = int(em_delay * rate)
+    if em_delay_frame != 0:
+        for key in ocp_result.keys():
+            if "q" in key or "q_dot" in key or "tau" in key or "f_ext" in key:
+                ocp_result[key] = ocp_result[key][:, em_delay_frame:]
+            if "emg" in key:
+                ocp_result[key] = ocp_result[key][:, :-em_delay_frame] if em_delay != 0 else ocp_result[key][..., :]
+    ocp_result = process_cycles(ocp_result, peaks, interpolation_size=cycle_size, remove_outliers=False)
+    q, qdot, tau, f_ext, emg = (ocp_result["cycles"]["q" + suffix], ocp_result["cycles"]["q_dot" + suffix],
+                                     ocp_result["cycles"]["tau" + suffix], ocp_result["cycles"]["f_ext"],
+                                     ocp_result["cycles"]["emg"])
+    if n_cycles > q.shape[0] - 1:
+        raise ValueError("The number of selected cycles should be less than the number of total cycles")
+    random_idx_list = generate_random_idx(n_cycles, batch_size, q.shape[0])
+    dict_to_return = {"q": q, "qdot": qdot, "tau": tau, "f_ext": f_ext, "emg": emg}
+    return dict_to_return, random_idx_list
+
 
 def get_experimental_data(file_path, n_start=0, n_stop=None, source="dlc_1", downsample=2):
     """
@@ -14,6 +41,7 @@ def get_experimental_data(file_path, n_start=0, n_stop=None, source="dlc_1", dow
     out_dict["f_ext"] = data["f_ext"][:, n_start:n_stop][..., ::downsample]
     out_dict["q_init"] = data[source]["q"][:, n_start:n_stop][..., ::downsample]
     out_dict["q_dot_init"] = data[source]["q_dot"][:, n_start:n_stop][..., ::downsample]
+    out_dict["emg"] = data["emg"][:, n_start:n_stop][..., ::downsample]
     names = data[source]["marker_names"]
     ia_idx = names.index("SCAP_IA")
     ts_idx = names.index("SCAP_TS")
@@ -29,17 +57,16 @@ def get_all_file(participants, data_dir, trial_names=None, to_include=(), to_exc
     parts = []
     if trial_names and len(trial_names) != len(participants):
         trial_names = [trial_names for _ in participants]
-    for part in participants:
-        all_files = os.listdir(f"{data_dir}{os.sep}{part}")
-        all_files = [file for file in all_files if any([ext in file for ext in to_include]) and not any([ext in file for ext in to_exclude])]
-        all_files = [f"{data_dir}{os.sep}{part}{os.sep}{file}" for file in all_files]
-        final_files = all_files if not trial_names else []
+    for p, part in enumerate(participants):
+        try:
+            all_files = os.listdir(f"{data_dir}{os.sep}{part}")
+        except FileNotFoundError:
+            print(f"Participant {part} not found in {data_dir}")
+            continue
         if trial_names:
-            for trial in trial_names[participants.index(part)]:
-                for file in all_files:
-                    if trial in file:
-                        final_files.append(file)
-                        break
+            to_include += trial_names[p] if isinstance(trial_names[p], list) else trial_names
+        all_files = [file for file in all_files if all([ext in file for ext in to_include]) and not any([ext in file for ext in to_exclude])]
+        final_files = [f"{data_dir}{os.sep}{part}{os.sep}{file}" for file in all_files]
         parts.append([part for _ in final_files])
         all_path.append(final_files)
     return sum(all_path, []), sum(parts, [])

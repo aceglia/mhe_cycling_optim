@@ -1,3 +1,5 @@
+from types import NoneType
+
 from optim_params.ocp_utils import prepare_ocp, get_update_function, get_solver_options
 from bioptim import Solver, SolutionMerge, BiorbdModel
 import numpy as np
@@ -14,7 +16,6 @@ class TorqueEstimator:
         self.from_direct_dynamics = None
         self.ocp_initialized = None
         self.with_external_loads = False
-        self.use_residuals = False
         self.model = None
         self.from_inverse_dynamics = False
         self.use_mhe = False
@@ -74,7 +75,7 @@ class TorqueEstimator:
                           )
         self.ocp_initialized = True
 
-    def compute_torque(self, from_direct_dynamics=False, from_inverse_dynamics=False, use_residuals=False,
+    def compute_torque(self, from_direct_dynamics=False, from_inverse_dynamics=False,
                    with_external_loads=False, model_path=None, output_path=None, save_data=False, adapt_size_to_ocp=True):
         if not self.is_data_loaded:
             raise ValueError("Experimental data not loaded")
@@ -82,7 +83,6 @@ class TorqueEstimator:
             raise ValueError("Please specify if you want to use direct and/or inverse dynamics")
         self.from_inverse_dynamics = from_inverse_dynamics
         self.from_direct_dynamics = from_direct_dynamics
-        self.use_residuals = use_residuals
         self.with_external_loads = with_external_loads if self.with_external_loads is None else self.with_external_loads
         self.model_path = model_path
         if self.from_direct_dynamics:
@@ -148,7 +148,7 @@ class TorqueEstimator:
         merged_states = sol.decision_states(to_merge=SolutionMerge.NODES)
         merged_controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
         self.q_ocp = merged_states["q"]
-        self.q_dot_ocp = merged_states["q_dot"]
+        self.q_dot_ocp = merged_states["qdot"]
         self.tau_ocp = merged_controls["tau"]
         if self.with_external_loads:
             self.f_ext_ocp = merged_controls["f_ext"]
@@ -160,9 +160,11 @@ class TorqueEstimator:
                 continue
             if isinstance(value, np.ndarray) and (adapt_size and "ocp" not in key and self.use_mhe):
                 final_data_to_save[key] = value[..., : - (self.n_shooting + 1)]
-            else:
+            elif isinstance(value, (np.ndarray, bool, int, float, str, list, tuple)):
                 final_data_to_save[key] = value
-        save(final_data_to_save, output_path)
+            elif value is None:
+                final_data_to_save[key] = None
+        save(final_data_to_save, output_path, safe=False)
 
 
 

@@ -9,7 +9,11 @@ class Symbolics:
         self.x = None
         self.p = None
 
-    def get_symbol(self, name):
+    def get(self, name):
+        name = [name] if not isinstance(name, list) else name
+        return [self._get_one(n) for n in name]
+
+    def _get_one(self, name):
         return self.__dict__[name]
 
     def add_symbolics(self, name, size):
@@ -27,7 +31,11 @@ class MxVariables:
         self.p = None
         self.f_ext = None
 
-    def get_variable(self, name):
+    def get(self, name):
+        name = [name] if not isinstance(name, list) else name
+        return [self._get_one(n) for n in name]
+
+    def _get_one(self, name):
         return self.__dict__[name]
 
     def add_variable(self, name, data):
