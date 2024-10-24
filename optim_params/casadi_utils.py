@@ -1,4 +1,4 @@
-from casadi import MX
+from casadi import MX, SX
 
 
 class Symbolics:
@@ -16,8 +16,11 @@ class Symbolics:
     def _get_one(self, name):
         return self.__dict__[name]
 
-    def add_symbolics(self, name, size):
-        self.__dict__[name] = MX.sym(name, size)
+    def add(self, name, size, sx=False):
+        if sx:
+            self.__dict__[name] = SX.sym(name, size)
+        else:
+            self.__dict__[name] = MX.sym(name, size)
 
 
 class MxVariables:
@@ -33,13 +36,20 @@ class MxVariables:
 
     def get(self, name):
         name = [name] if not isinstance(name, list) else name
-        return [self._get_one(n) for n in name]
+        return_list = [self._get_one(n) for n in name]
+        if len(return_list) == 1:
+            return return_list[0]
+        else:
+            return return_list
 
     def _get_one(self, name):
         return self.__dict__[name]
 
-    def add_variable(self, name, data):
-        self.__dict__[name] = MX(data)
+    def add(self, name, data, sx=False):
+        if sx:
+            self.__dict__[name] = SX(data)
+        else:
+            self.__dict__[name] = MX(data)
 
     @staticmethod
     def to_mx(data):

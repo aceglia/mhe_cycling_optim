@@ -27,7 +27,9 @@ emg_names_init = ["PectoralisMajorThorax",
              'DeltoideusScapula_P']
 
 
-def update_data(initial_data, cycle_size, n_cycles, random_idx_list):
+def update_data(initial_data, random_idx_list):
+    cycle_size = initial_data["q"].shape[-1]
+    n_cycles = len(random_idx_list)
     q, qdot, tau, f_ext, emg = (initial_data["q"], initial_data["qdot"],
                                      initial_data["tau"],
                                      initial_data["f_ext"], initial_data["emg"])
@@ -48,7 +50,7 @@ def update_data(initial_data, cycle_size, n_cycles, random_idx_list):
     dict_data = {"q": q_final, "qdot": qdot_final, "tau": tau_final, "f_ext": f_ext_final, "emg": emg_final}
     return dict_data
 
-def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_mapping):
+def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_mapping=False):
     optim_param_list = [p.value for p in optim_param_list]
     param_bounds = [[0, 1] for _ in optim_param_list]
     p_init = [1]
@@ -65,23 +67,12 @@ def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_
             param_bounds[p_idx] = [0.8, 1.2]
         else:
             raise ValueError(f"Parameter {param} not recognized")
-
     p_mapping = [list(range(eigen_model.nbMuscles())), list(range(eigen_model.nbMuscles()))]
     p_mapping_list = [p_mapping] * len(optim_param_list)
     list_mapping = list(range(eigen_model.nbMuscles()))
     if use_p_mapping and "f_iso" in optim_param_list:
-        all_idx = []
-        unique_names = []
-        for m in muscle_list:
-            if m.split("_")[0] not in unique_names:
-                unique_names.append(m.split("_")[0])
-        for muscle in unique_names:
-            n_repeat = 0
-            for m in muscle_list:
-                if muscle in m:
-                    n_repeat += 1
-            all_idx.append([unique_names.index(muscle)] * n_repeat)
-        list_mapping = sum(all_idx, [])
+        list_mapping = [0, 1, 2, 3, 3, 4, 5, 6, 7, 7, 7, 8, 9, 10, 11, 12, 12, 13, 14, 14, 14, 15, 15, 16, 17, 18, 18,
+                                         18, 19, 19, 20, 20, 20, 21, 21]
         p_mapping = [list(range(max(list_mapping) + 1)), list_mapping]
         p_mapping_list[optim_param_list.index("f_iso")] = p_mapping
     return param_bounds, p_init, p_mapping_list, all_muscle_len, list_mapping
@@ -91,7 +82,7 @@ if __name__ == '__main__':
     with_residual_torque = True
     use_ratio_tracking = True
     participants = [f"P{i}" for i in range(9, 17)]
-    params_to_optimize = [Parameters.f_iso, Parameters.l_optim]
+    params_to_optimize = [Parameters.f_iso, Parameters.lm_optim]
     data_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/reference_data"
     model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
 
@@ -100,7 +91,7 @@ if __name__ == '__main__':
     for file, participant in zip(files, part):
         list_tmp = file.replace(".bio", "").split("/")[-1].split("_")
         trial_short = "gear_" + list_tmp[list_tmp.index("gear") + 1]
-        model_path = model_dir + f"/{part}/models/{trial_short}_model_scaled_dlc_ribs_new_seth_param.bioMod"
+        model_path = model_dir + f"/{participant}/models/{trial_short}_model_scaled_dlc_ribs_new_seth_param.bioMod"
         emg_names = emg_names_init.copy()
         if part == 'P11':
             emg_names.pop(emg_names.index('LatissimusDorsi'))
@@ -108,12 +99,15 @@ if __name__ == '__main__':
         initial_data, idx_random = get_data_dict(file, n_cycles=2, batch_size=batch_size, rate=120,
                                                           cycle_size=15, from_id=False)
         for i in range(batch_size):
-            identifier.load_experimental_data(update_data(initial_data,15, 2, idx_random[i]))
+            identifier.load_experimental_data(update_data(initial_data,idx_random[i]))
             param_bounds, p_init, p_mapping_list, all_muscle_len, list_mapping = initialize_bounds_and_mapping(
-                params_to_optimize, file,
-                                          identifier.q, use_p_mapping=True)
-            identifier.initialize_problem(model_path, p_mapping_list, with_residual_torque=with_residual_torque,
-                                           threads=1, weights=weights, scaling_factor=(1, (1, 1), 1), emg_names=emg_names)
-            identifier.solve(save=False, output_file=data_dir, max_iter=1000, hessian_approximation="exact",
+                params_to_optimize, model_path,
+                                          identifier.q, use_p_mapping=False)
+            identifier.initialize_problem(model_path, p_mapping_list, with_residual_torques=with_residual_torque,
+                                           threads=6, weights=weights, scaling_factor=(1, (1, 1), 1), emg_names=emg_names,
+                                          all_muscle_len=all_muscle_len, l_norm_bounded=False, p_init=p_init,
+                                          param_bounds=param_bounds, use_sx=False)
+            identifier.solve(save_results=False, output_file=data_dir, max_iter=1000, hessian_approximation="exact",
                              linear_solver="ma57")
+            print(f"Optimization for participant {participant} and trial {trial_short} is done for batch {i}")
 

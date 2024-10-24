@@ -99,11 +99,15 @@ def get_cost_to_map(scaling_factor, symbolics, weights,
     p, act, tau, pas_tau = symbolics.p, symbolics.emg, symbolics.tau, symbolics.pas_tau
     if with_torque:
         torque_weights = np.array([weights["min_pas_torque"] for _ in range(pas_tau.shape[0])])
-        j = [j + (torque_weights[tau_idx] * pas_tau[tau_idx]) ** 2 for tau_idx in range(pas_tau.shape[0])]
+        for tau_idx in range(pas_tau.shape[0]):
+            j += torque_weights[tau_idx] * (pas_tau[tau_idx]) ** 2
 
     # min act
-    j = [j + (weights["min_act"] * x[m]) ** 2 for m in range(x.shape[0]) if m not in muscle_track_idx]
-    j = [j + (weights["activation_tracking"] * ((x[m]) - act[m])) ** 2 for m in range(x.shape[0]) if m in muscle_track_idx]
+    for m in range(x.shape[0]):
+        if m not in muscle_track_idx:
+            j += weights["min_act"] * (x[m]) ** 2
+        else:
+            j += weights["activation_tracking"] * ((x[m]) - act[muscle_track_idx.index(m)]) ** 2
 
     mus_tau = _get_muscle_torque(x, q, qdot, p, p_mapping, muscle_casadi_function, scaling_factor, with_param)
     pas_tau_tmp = pas_tau if with_torque else None
@@ -118,7 +122,7 @@ def get_cost_to_map(scaling_factor, symbolics, weights,
             continue
         sqrt = 1 if tau_as_constraint else 2
         factor = 0.3 if t == 3 else 1
-        j += (weights["tau_tracking"] * factor * (tau[t] * scaling_factor[2] - to_substract)) ** sqrt
+        j += weights["tau_tracking"] * (factor * (tau[t] * scaling_factor[2] - to_substract)) ** sqrt
     return j
 
 def get_cost_n_dependant(p, p_mapping, params_to_optim, scaling_factor,weights, use_ratio_tracking=False,  param_init=None,
@@ -127,18 +131,16 @@ def get_cost_n_dependant(p, p_mapping, params_to_optim, scaling_factor,weights, 
     count = 0
     J_params = 0
     g = []
-    # p = ca.MX.sym("p_sym_bis", len(p_mapping) * len(p_mapping[0][0]))
     for p_idx in range(len(p_mapping)):
-        # J = _add_to_J(J, weights[f"min_{params_to_optim[p_idx]}"],
-        #               (p[count: count + len(p_mapping[p_idx][0])] - 1 * scaling_factor[1]))
         p_tmp = p[count: count + len(p_mapping[p_idx][0])]
-        for p_idx_bis in range(p_tmp.shape[0]):
-            J_params += (weights[f"min_{params_to_optim[p_idx]}"] * (p_tmp[p_idx_bis] - 1 * scaling_factor[1][p_idx])) ** 2
-        if use_ratio_tracking:
-            if params_to_optim[p_idx] == "lm_optim":
-                lm_opti = p[count: count + len(p_mapping[p_idx][0])]
-            if params_to_optim[p_idx] == "lt_slack":
-                lt_slack = p[count: count + len(p_mapping[p_idx][0])]
+        # for p_idx_bis in range(p_tmp.shape[0]):
+        #     J_params += (weights[f"min_{params_to_optim[p_idx]}"] * (p_tmp[p_idx_bis] - 1 * scaling_factor[1][p_idx])) ** 2
+        J_params += ca.sum1(weights[f"min_{params_to_optim[p_idx]}"] * (
+                    p_tmp - 1 * scaling_factor[1][p_idx]) ** 2)
+        if params_to_optim[p_idx] == "lm_optim":
+            lm_opti = p[count: count + len(p_mapping[p_idx][0])]
+        elif params_to_optim[p_idx] == "lt_slack":
+            lt_slack = p[count: count + len(p_mapping[p_idx][0])]
         count += len(p_mapping[p_idx][0])
 
     #norm_len = MX(muscle_len) / (lm_opti / MX(scaling_factor[1][params_to_optim.index("lm_optim")]))
@@ -164,7 +166,7 @@ def get_cost_n_dependant(p, p_mapping, params_to_optim, scaling_factor,weights, 
             lm_optimized = lm_init * lm_opti[i]
             lt_slack_optimized = lt_init * lt_slack[i]
             ratio = lt_init / lm_init
-            J_params += (weights["ratio_tracking"] * (lt_slack_optimized / lm_optimized - ratio)) ** 2
+            J_params += weights["ratio_tracking"] * ((lt_slack_optimized / lm_optimized - ratio)) ** 2
     #     J = _add_to_J(J, weights["ratio_tracking"], to_minimize)
     if isinstance(g, list) and len(g) == 0:
         g = None
@@ -239,11 +241,9 @@ def return_param_from_mapping(p_mapping, p_init):
     final_param_list = []
     count = 0
     for mapping in p_mapping:
-        p_tmp = 0
-        for m in mapping[1]:
-            p_tmp = vertcat(p_tmp, p_init[mapping[0].index(m) + count])
-        final_param_list.append(p_tmp)
+        p_tmp = p_init[count:count + len(mapping[0])]
         count += len(mapping[0])
+        final_param_list.append([p_tmp[mapping[0].index(m)] for m in mapping[1]])
     return final_param_list
 
 
