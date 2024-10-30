@@ -1614,7 +1614,7 @@ def _interpolate_data_2d(data, shape):
     return new_data
 
 
-def process_cycles(all_results, peaks, n_peaks=None, interpolation_size=120, remove_outliers=False):
+def process_cycles(all_results, peaks=None, n_peaks=None, interpolation_size=120, remove_outliers=False):
     data_size = all_results["q"].shape[1]
     dic_tmp = {}
     for key2 in all_results.keys():
@@ -1883,7 +1883,7 @@ def main():
     from math import ceil
     import matplotlib.pyplot as plt
     perform_optim = True
-    perform_static_optim = False
+    perform_static_optim = True
     # sensix_data = load(f"data/active_global_ref.bio")
     # f_ext = -np.array([sensix_data["LMY"],
     #                    -sensix_data["LMX"],
@@ -1921,7 +1921,7 @@ def main():
         for part in participants:
             file_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}"
             all_dir = os.listdir(file_dir)
-            trials = [dir for dir in all_dir if "gear" in dir and "result" not in dir]
+            trials = [dir for dir in all_dir if "gear_20" in dir and "result" not in dir]
             for trial in trials:
                 trial_short = f"{trial.split('_')[0]}_{trial.split('_')[1]}"
                 print("perform mhe on part ", part, "trial ", trial_short)
@@ -2086,8 +2086,8 @@ def main():
                     # if with_f_ext:
                     #     save_dic["fext"] = sol.controls["f_ext"],
 
-                    # save(save_dic, file_name,
-                    #      safe=False)
+                    save(save_dic, file_name,
+                         safe=False)
                     # integrated_sol = sol.integrate()
                     #sol.graphs()
                 if not perform_static_optim:
@@ -2116,7 +2116,7 @@ def main():
                     peaks = np.array(peaks[first_peak_idx:last_peak_idx]).astype(int) - int(ocp_result["n_start"]/2)
                     q = ocp_result["q"]
                     rate = 60
-                    process_cycles(ocp_result, peaks, interpolation_size=rate, remove_outliers=False)
+                    process_cycles(ocp_result, peaks, interpolation_size=rate, remove_outliers=False,)
                     n_cycle_data = ocp_result["cycles"]["q"].shape[0]
                     if random_idx_dic == {}:
                         random_idx_dic = generate_random_idx(n_cycles, n_batch, n_cycle_data)

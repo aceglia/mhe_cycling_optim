@@ -1,4 +1,19 @@
-from casadi import MX, SX
+from casadi import MX, SX, evalf
+import numpy as np
+
+def convert_to_casadi(data, to_sx=False, to_array=False, to_mx=False):
+    if to_array and to_sx and to_mx:
+        raise ValueError("Cannot convert to multiple types at once")
+    if not to_array and not to_sx and not to_mx:
+        raise ValueError("No conversion specified")
+    if isinstance(data, list):
+        return [convert_to_casadi(d, to_sx, to_array, to_mx) for d in data]
+    if to_array:
+        return np.array(evalf(data))
+    elif to_sx:
+        return  SX(evalf(data))
+    elif to_mx:
+        return MX(evalf(data))
 
 
 class Symbolics:

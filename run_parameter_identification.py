@@ -7,15 +7,14 @@ import biorbd
 import numpy as np
 
 
-weights = {"tau_tracking": 2,
-           "activation_tracking": 10,
+weights = {"tau_tracking": 200,
+           "activation_tracking": 500,
            "min_act": 1,
-           "min_f_iso": 5,
-           "min_lm_optim": 5,
-           "min_lt_slack": 100,
-           "min_pas_torque": 0.6,
-           "ratio_tracking": 1,
-           "dynamics": 100}
+           "min_f_iso": 100,
+           "min_lm_optim": 100,
+           "min_pas_torque": 10
+           }
+
 emg_names_init = ["PectoralisMajorThorax",
              "BIC",
              "TRI",
@@ -53,16 +52,15 @@ def update_data(initial_data, random_idx_list):
 def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_mapping=False):
     optim_param_list = [p.value for p in optim_param_list]
     param_bounds = [[0, 1] for _ in optim_param_list]
-    p_init = [1]
+    p_init = [1] * len(optim_param_list)
     all_muscle_len = None
     eigen_model = biorbd.Model(biorbd_model_path)
-    muscle_list = [m.to_string() for m in eigen_model.muscleNames()]
     for p_idx, param in enumerate(optim_param_list):
         if param == "f_iso":
             param_bounds[p_idx] = [0.5, 2.5]
         elif param == "lm_optim":
             all_muscle_len = get_all_muscle_len(eigen_model, q)
-            param_bounds[p_idx] = [0.5, 2]
+            param_bounds[p_idx] = [0.8, 2.5]
         elif param == "lt_slack":
             param_bounds[p_idx] = [0.8, 1.2]
         else:
@@ -81,7 +79,7 @@ if __name__ == '__main__':
     with_param = True
     with_residual_torque = True
     use_ratio_tracking = True
-    participants = [f"P{i}" for i in range(9, 17)]
+    participants = [f"P{i}" for i in range(10, 17)]
     params_to_optimize = [Parameters.f_iso, Parameters.lm_optim]
     data_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/reference_data"
     model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
@@ -96,8 +94,14 @@ if __name__ == '__main__':
         if part == 'P11':
             emg_names.pop(emg_names.index('LatissimusDorsi'))
         identifier = ParametersIdentifier(params_to_optimize)
-        initial_data, idx_random = get_data_dict(file, n_cycles=2, batch_size=batch_size, rate=120,
-                                                          cycle_size=15, from_id=False)
+        n_cycles, cycle_size = 4, 15
+        initial_data, idx_random = get_data_dict(file, n_cycles=n_cycles, batch_size=batch_size, rate=120,
+                                                          cycle_size=cycle_size, from_id=False)
+        if "min_lm_optim" in weights:
+            weights["lm_optim"] = weights["min_lm_optim"] * n_cycles #+ 10 * (n_cycles - 1)
+        if "min_f_iso" in weights:
+            
+            weights["min_f_iso"] = weights["min_f_iso"] * n_cycles #+ 10 * (n_cycles - 1)
         for i in range(batch_size):
             identifier.load_experimental_data(update_data(initial_data,idx_random[i]))
             param_bounds, p_init, p_mapping_list, all_muscle_len, list_mapping = initialize_bounds_and_mapping(
@@ -106,8 +110,8 @@ if __name__ == '__main__':
             identifier.initialize_problem(model_path, p_mapping_list, with_residual_torques=with_residual_torque,
                                            threads=6, weights=weights, scaling_factor=(1, (1, 1), 1), emg_names=emg_names,
                                           all_muscle_len=all_muscle_len, l_norm_bounded=False, p_init=p_init,
-                                          param_bounds=param_bounds, use_sx=False)
-            identifier.solve(save_results=False, output_file=data_dir, max_iter=1000, hessian_approximation="exact",
-                             linear_solver="ma57")
+                                          param_bounds=param_bounds, use_sx=True)
+            identifier.solve(save_results=False, output_file=data_dir, max_iter=5000, hessian_approximation="exact",
+                             linear_solver="ma57", plot=True, objective_scale_factor=10)
             print(f"Optimization for participant {participant} and trial {trial_short} is done for batch {i}")
 

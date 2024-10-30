@@ -1,0 +1,59 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plot_muscle_activation(muscle_activations, emg=None, muscle_names=None, muscle_track_idx=None):
+    """
+    Plots the muscle activations over time.
+    Parameters
+    ----------
+    """
+    plt.figure(f"Muscle activations")
+    if muscle_names is None:
+        muscle_names = ['Muscle'+ str(i) for i in range(len(muscle_activations))]
+    for i, act in enumerate(muscle_activations):
+        plt.subplot(int(np.ceil(muscle_activations.shape[0]/4)), 4, i+1)
+        plt.plot(act)
+        if emg is not None and i in muscle_track_idx:
+            plt.plot(emg[muscle_track_idx.index(i), :], color="r")
+        plt.title(muscle_names[i])
+        plt.xlabel('Time (s)')
+        plt.ylabel('Muscle activation')
+
+def plot_joint_torques(muscle_torques, reference_torques, residuals_torques=None, joint_names=None):
+    plt.figure(f"Joint torques")
+    if residuals_torques is None:
+        residuals_torques = np.zeros_like(muscle_torques)
+    if joint_names is None:
+        joint_names = ['Joint'+ str(i) for i in range(len(muscle_torques))]
+    for i in range(0, reference_torques.shape[0]):
+        plt.subplot(int(np.ceil(reference_torques.shape[0]/4)), 4, i + 1)
+        plt.plot(reference_torques[i, :], color="r")
+        plt.plot(muscle_torques[i, :] + residuals_torques[i, :], color="b")
+        plt.plot(residuals_torques[i, :], color="g", alpha=0.5)
+        plt.title(joint_names[i])
+
+def plot_param(param, muscle_names=None, param_name=None, bounds=None, initial_value=1):
+    if muscle_names is None:
+        muscle_names = ['Muscle'+ str(i) for i in range(param[1].shape[0])]
+    if param_name is None:
+        param_name = [f"Parameter {i}" for i in range(len(param))]
+    for p in range(len(param)):
+        plt.figure(param_name[p])
+        bar_width = 0.1
+        indices = np.linspace(0, len(muscle_names), len(muscle_names))
+        # Separate data into above and below 1
+        above_one = np.clip(np.array(param[p]) - 1, 0, None)  # Values above 1
+        below_one = np.clip(np.array(param[p]) - 1, None, 0)  # Values below 1
+        # Plot above 1 values
+        plt.bar(indices, above_one, width=bar_width)
+        plt.bar(indices, below_one, width=bar_width)
+        plt.xticks(indices + bar_width / 2, muscle_names, rotation=90)
+        y_ticks = np.arange(bounds[p][0] - 1, bounds[p][1] - 1, 0.1)  # Define range for y-ticks
+        y_labels = [f'{1 + tick:.1f}' for tick in y_ticks]  # Create labels centered on 1
+        plt.yticks(y_ticks, y_labels)
+        # Center y-axis at 1
+        plt.axhline(y=0, color='black', linestyle='--')
+        plt.axhline(y=bounds[p][1] - 1, color='black', linestyle='--')
+        plt.axhline(y=bounds[p][0] - 1, color='black', linestyle='--')
+        # Labels and title
+        plt.ylabel('Deviation from initial value')
