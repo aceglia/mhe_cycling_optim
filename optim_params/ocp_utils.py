@@ -19,6 +19,7 @@ from bioptim import (
 )
 from casadi import MX, vertcat
 import numpy as np
+from optim_params.file_io_utils import save_iteration
 
 
 def custom_torque_driven(
@@ -73,7 +74,7 @@ def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):  # , wi
 def get_objectives(weigths, nb_q, nb_markers, n_shooting, with_f_ext=False, track_previous=False, target=None):
     f_ext = np.zeros((6, n_shooting + 1))
     # target = np.zeros((3, nb_markers, n_shooting + 1))
-    q_init = np.zeros((nb_q, n_shooting + 1))
+    q_init = np.zeros((nb_q * 2, n_shooting + 1))
     objective_functions = ObjectiveList()
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot", weight=weigths["qdot"],
                             multi_thread=False,
@@ -195,8 +196,9 @@ def get_solver_options(solver):
         sol_dict["solver"].set_print_level(1)
         sol_dict["solver"].set_qp_solver("PARTIAL_CONDENSING_HPIPM")  # PARTIAL_CONDENSING_OSQP PARTIAL_CONDENSING_HPIPM
         sol_dict["solver"].set_integrator_type("IRK")
-        sol_dict["solver"].set_maximum_iterations(100)
-        sol_dict["solver"].set_convergence_tolerance(1e-5)
+        #sol_dict["solver"].set_nlp_solver_type("SQP_RTI")
+        sol_dict["solver"].set_maximum_iterations(1000)
+        sol_dict["solver"].set_convergence_tolerance(1e-4)
 
     elif isinstance(solver, Solver.IPOPT):
         sol_dict["solver"].set_hessian_approximation("exact")
@@ -214,14 +216,14 @@ def get_solver_options(solver):
         raise NotImplementedError("Solver not recognized")
     return sol_dict
 
-def get_update_function(markers_init, f_ext, with_f_ext, track_previous, kin_init, n_shooting, model, ocp):
+def get_update_function(markers_init, f_ext, with_f_ext, track_previous, kin_init, n_shooting, model, ocp, save_data):
     def update_functions(mhe, t, _):
         def target_mark(i: int):
             return markers_init[:, :, i: i + n_shooting + 1]
 
         def target_f_ext(i: int):
             return f_ext[:, i: i + n_shooting + 1]
-
+        q_to_track, qdot_to_track = None, None
         if with_f_ext:
             mhe.update_objectives_target(target=target_f_ext(t), list_index=2)
             mhe.update_objectives_target(target=target_mark(t), list_index=3)
@@ -229,9 +231,9 @@ def get_update_function(markers_init, f_ext, with_f_ext, track_previous, kin_ini
                 if ocp.sol is not None:
                     previous_sol = ocp.sol.decision_states(to_merge=SolutionMerge.NODES)
                 q_to_track = previous_sol[
-                    "q"] if ocp.sol is not None else kin_init[:model.nbQ(), t:t + n_shooting + 1]
+                    "q"] if ocp.sol is not None else kin_init[:model.nb_q, t:t + n_shooting + 1]
                 qdot_to_track = previous_sol[
-                    "qdot"] if ocp.sol is not None else kin_init[model.nbQ():, t:t + n_shooting + 1]
+                    "qdot"] if ocp.sol is not None else kin_init[model.nb_q:, t:t + n_shooting + 1]
                 mhe.update_objectives_target(target=q_to_track, list_index=5)
                 mhe.update_objectives_target(target=qdot_to_track, list_index=6)
         else:
@@ -239,10 +241,15 @@ def get_update_function(markers_init, f_ext, with_f_ext, track_previous, kin_ini
             if track_previous:
                 previous_sol = ocp.sol.decision_states(to_merge=SolutionMerge.NODES)
                 q_to_track = previous_sol[
-                    "q"] if ocp.sol is not None else kin_init[:model.nbQ(), t:t + n_shooting + 1]
+                    "q"] if ocp.sol is not None else kin_init[:model.nb_q, t:t + n_shooting + 1]
                 qdot_to_track = previous_sol[
-                    "qdot"] if ocp.sol is not None else kin_init[model.nbQ():, t:t + n_shooting + 1]
+                    "qdot"] if ocp.sol is not None else kin_init[model.nb_q:, t:t + n_shooting + 1]
                 mhe.update_objectives_target(target=q_to_track, list_index=5)
                 mhe.update_objectives_target(target=qdot_to_track, list_index=6)
+        if ocp.sol is not None and ocp.sol.status !=0:
+            print(f"Only {t} iterations were done.")
+            return False
+        if ocp.sol:
+            save_iteration(target_f_ext(t), target_mark(t), q_to_track, qdot_to_track, ocp.sol, t, "_iterations_tmp.bio")
         return t < kin_init.shape[1] - (n_shooting + 1)
     return update_functions

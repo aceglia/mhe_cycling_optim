@@ -13,7 +13,6 @@ from biosiglive import save
 import time
 
 
-
 class ParametersIdentifier:
     def __init__(self, params: list[Parameters]):
         self.lm_optim_init = None
@@ -27,7 +26,7 @@ class ParametersIdentifier:
         self.symbolics = None
         self.mx_variables = None
 
-    def load_experimental_data(self, data:dict, prepare_data_function=None, **kwargs):
+    def load_experimental_data(self, data: dict, prepare_data_function=None, **kwargs):
         self.tau = data['tau']
         self.q = data['q']
         self.q_dot = data['qdot']
@@ -35,8 +34,9 @@ class ParametersIdentifier:
             self.emg = data['emg']
         self.is_data_loaded = True
         if prepare_data_function is not None:
-            self.tau, self.q, self.q_dot, self.emg = prepare_data_function(self.tau, self.q, self.q_dot, self.emg, **kwargs)
-    
+            self.tau, self.q, self.q_dot, self.emg = prepare_data_function(self.tau, self.q, self.q_dot, self.emg,
+                                                                           **kwargs)
+
     def _compute_symbolics(self):
         self.symbolics = Symbolics()
         self.symbolics.add("q", self.model.nbQ())
@@ -63,15 +63,15 @@ class ParametersIdentifier:
     def _compute_mapped_cost_function(self, model_param_init, use_sx=False):
         self.symbolics.add("lm_optim", len(self.p_mapping[self.params_to_optim.index("lm_optim")][0]))
         j, g = get_cost_to_map(self.scaling_factor, self.symbolics,
-                                  self.weights,
-                                  p_mapping=self.p_mapping,
-                                  with_torque=self.with_torque,
-                                  muscle_track_idx=self.muscle_track_idx,
-                                  muscle_casadi_function=self.ca_funct,
-                                  with_param=self.with_param,
-                                  passive_torque_idx=self.residual_torque_idx,
-                                  tau_as_constraint=self.torque_as_constraint,
-                                  ignore_dof=self.ignore_dof,
+                               self.weights,
+                               p_mapping=self.p_mapping,
+                               with_torque=self.with_torque,
+                               muscle_track_idx=self.muscle_track_idx,
+                               muscle_casadi_function=self.ca_funct,
+                               with_param=self.with_param,
+                               passive_torque_idx=self.residual_torque_idx,
+                               tau_as_constraint=self.torque_as_constraint,
+                               ignore_dof=self.ignore_dof,
                                bounds_l_norm=self.l_norm_bounded,
                                params_to_optim=self.params_to_optim,
                                param_init=model_param_init)
@@ -93,9 +93,9 @@ class ParametersIdentifier:
                                    self.symbolics.lm_init,
                                    self.symbolics.lm_optim], [g]).expand()
             g_mapped = g_fun.map(self.ns, "thread", self.threads)
-            p_lm_optim = self.symbolics.p_all[all_lm_optim:all_lm_optim+len(self.p_mapping[idx_lm_optim][0])]
+            p_lm_optim = self.symbolics.p_all[all_lm_optim:all_lm_optim + len(self.p_mapping[idx_lm_optim][0])]
             g = g_mapped(self.mx_variables.muscles_len, repmat(self.mx_variables.lm_init, 1, self.ns),
-                           repmat(p_lm_optim, 1, self.ns))
+                         repmat(p_lm_optim, 1, self.ns))
         if self.with_torque:
             self.symbolics.add("pas_tau_all", len(self.residual_torque_idx) * self.ns, sx=use_sx)
             tau_split = reshape(self.symbolics.pas_tau_all, len(self.residual_torque_idx), self.ns)
@@ -114,7 +114,7 @@ class ParametersIdentifier:
         J_2, g = get_cost_n_dependant(self.symbolics.p_non_map, self.p_mapping,
                                       self.params_to_optim, self.scaling_factor, self.weights,
                                       mx_variables=self.mx_variables,
-                                  use_ratio_tracking=False, param_init=model_param_init,
+                                      use_ratio_tracking=False, param_init=model_param_init,
                                       bounds_l_norm=l_norm_bounded, use_sx=use_sx)
         J_2_func = Function("J2", [self.symbolics.p_non_map], [J_2]).expand()
         # if l_norm_bounded:
@@ -126,8 +126,8 @@ class ParametersIdentifier:
         return obj_2
 
     def initialize_problem(self,
-                           biorbd_model_path:str,
-                           p_mapping:list,
+                           biorbd_model_path: str,
+                           p_mapping: list,
                            with_param=True,
                            with_residual_torques=True, torque_as_constraint=False, ignore_dof=None,
                            emg_names=None,
@@ -155,24 +155,28 @@ class ParametersIdentifier:
             muscle_track_idx.append([j for j in range(len(muscle_list)) if emg_names[i] in muscle_list[j]])
         self.muscle_track_idx = sum(muscle_track_idx, [])
         self.emg = map_activation(self.emg, emg_names=self.emg_names,
-                                        muscle_track_idx=self.muscle_track_idx,
-                                        model=self.model)
+                                  muscle_track_idx=self.muscle_track_idx,
+                                  model=self.model)
 
         self.n_p = sum([len(i[0]) for i in p_mapping]) if self.with_param else 0
         self.residual_torque_idx = [i for i in range(self.model.nbQ() - 10,
-                                               self.model.nbGeneralizedTorque())] if residual_torque_idx is None else residual_torque_idx
+                                                     self.model.nbGeneralizedTorque())] if residual_torque_idx is None else residual_torque_idx
         # define casadi variables
         model_param_init, ratio_init = get_initial_parameters(self.model, self.params_to_optim)
         if "lm_optim" in self.params_to_optim:
             self.lm_optim_init = model_param_init[self.params_to_optim.index("lm_optim")]
+
+        normalized_l = self.all_muscle_len / np.repeat(
+            np.array(convert_to_casadi(self.lm_optim_init, to_array=True)).reshape(-1, 1), self.all_muscle_len.shape[1],
+            axis=1)
         self.ns = self.q.shape[1]
         self._compute_symbolics()
         self._compute_mx_variables(use_sx=use_sx)
         self.ca_funct = return_muscle_torque_function(self.model, self.symbolics, p_mapping,
-                                      with_param=self.with_param,
-                                      params_to_optim=self.params_to_optim,
-                                      model_params_init=model_param_init,
-                                                 ratio=ratio_init)
+                                                      with_param=self.with_param,
+                                                      params_to_optim=self.params_to_optim,
+                                                      model_params_init=model_param_init,
+                                                      ratio=ratio_init)
 
         obj_1, g = self._compute_mapped_cost_function(model_param_init, use_sx=use_sx)
         self.g = g
@@ -182,7 +186,9 @@ class ParametersIdentifier:
             self.g = reshape(self.g, (-1, 1))
         self.total_obj = total_obj
 
-    def solve(self, save_results=False, output_file=None, plot=False, objective_scale_factor=1, **kwargs):
+    def solve(self, save_results=False, output_file=None, plot=False, objective_scale_factor=1, batch_number=0,
+              cycle_number=-1, **kwargs):
+        self.cycle_number, self.batch_number = cycle_number, batch_number
         opts = {"ipopt": {"max_iter": 1000, "print_level": 5, "linear_solver": "ma57",
                           "hessian_approximation": "exact",
                           "acceptable_tol": 1e-2,
@@ -192,13 +198,27 @@ class ParametersIdentifier:
         self.total_obj /= objective_scale_factor
         x0, tau_0 = get_initial_values(self.model, self.residual_torque_idx, self.ns, self.muscle_track_idx, self.emg,
                                        self.scaling_factor)
+        if self.l_norm_bounded:
+            normalized_l = (self.all_muscle_len /
+                            np.repeat(
+                                np.array(convert_to_casadi(self.lm_optim_init, to_array=True)).reshape(-1, 1),
+                                self.all_muscle_len.shape[1], axis=1))
+            bounds = [0.5, 1.5]
+            init_params_values = []
+            for l, l_norm in enumerate(normalized_l):
+                min = l_norm.min()
+                max = l_norm.max()
+                if bounds[0] < min < bounds[1] and bounds[0] < max < bounds[1]:
+                    init_params_values.append(1)
+                else:
+                    init_params_values.append(-1)
 
         bounds_dic = return_bounds(self.model, self.scaling_factor, self.symbolics.p_all, self.ns,
                                    self.symbolics.x_all, self.symbolics.pas_tau_all, x0, tau_0, self.with_param,
-                                    self.with_torque,
-                                    self.p_init, self.params_to_optim, self.p_mapping, self.param_bounds,
+                                   self.with_torque,
+                                   self.p_init, self.params_to_optim, self.p_mapping, self.param_bounds,
                                    self.l_norm_bounded, tau_bounds=50
-                                    )
+                                   )
         if self.torque_as_constraint or self.g is not None:
             nlp = {"x": bounds_dic["x"], "f": self.total_obj, "g": self.g}
             sol_nlp = nlpsol("sol", "ipopt", nlp, opts)
@@ -209,12 +229,13 @@ class ParametersIdentifier:
             sol_nlp = nlpsol("sol", "ipopt", nlp, opts)
             solution = sol_nlp(x0=bounds_dic["x0"], lbx=bounds_dic["lbx"], ubx=bounds_dic["ubx"])
         return self._dispatch_results(solution, sol_nlp, save_results, output_file, plot)
-    
+
     def _dispatch_results(self, solution, sol_nlp, save_results, output_file, plot):
         all_states = solution["x"].toarray().squeeze()
         pas_tau_mat = np.zeros(self.tau.shape)
         if self.with_torque:
-            residual_torques = all_states[-len(self.residual_torque_idx) * self.ns:].reshape(-1, len(self.residual_torque_idx)).T
+            residual_torques = all_states[-len(self.residual_torque_idx) * self.ns:].reshape(-1,
+                                                                                             len(self.residual_torque_idx)).T
             pas_tau_mat[self.residual_torque_idx, :] = residual_torques
             pas_tau_mat /= self.scaling_factor[2]
         act = all_states[:self.model.nbMuscles() * self.ns].reshape(-1, self.model.nbMuscles()).T
@@ -233,7 +254,7 @@ class ParametersIdentifier:
         if save_results:
             self._save_results(act, pas_tau_mat, p_list, solver_out, output_file)
         if plot:
-            self._plot(act, pas_tau_mat, p_list,)
+            self._plot(act, pas_tau_mat, p_list, )
         return act, pas_tau_mat, p_list, solver_out
 
     def _save_results(self, act, pas_tau, p, solver_out, save_path):
@@ -242,9 +263,9 @@ class ParametersIdentifier:
               "p_mapping": self.p_mapping, "p_init": self.p_init, "solving_time": time.time() - self.tic,
               "optimized_params": self.params_to_optim,
               "tracked_torque": self.tau, "muscle_track_idx": self.muscle_track_idx,
-              "param_bounds": self.param_bounds, "solver_out": solver_out}, save_path,
-             safe=False,
-             #add_data=True
+              "param_bounds": self.param_bounds, "solver_out": solver_out, "cycle_number": self.cycle_number
+                 , "batch_number": self.batch_number, "weights": self.weights}, save_path,
+             add_data=True
              )
 
     def _plot(self, act, pas_tau_mat, p_list):
@@ -256,10 +277,12 @@ class ParametersIdentifier:
         mjt = np.zeros((self.model.nbQ(), self.ns))
         for i in range(self.ns):
             mjt[:, i] = compute_muscle_joint_torque(model_updated, act[:, i], self.q[:, i], self.q_dot[:, i],
-                                              with_param=False,
-                                              to_mx=False)
-        plot_param(p_list, [name.to_string() for name in eigen_model.muscleNames()], self.params_to_optim, self.param_bounds, 1)
+                                                    with_param=False,
+                                                    to_mx=False)
+        plot_param(p_list, [name.to_string() for name in eigen_model.muscleNames()], self.params_to_optim,
+                   self.param_bounds, 1)
         plot_joint_torques(mjt, self.tau, pas_tau_mat)
-        plot_muscle_activation(act, self.emg, [name.to_string() for name in eigen_model.muscleNames()], self.muscle_track_idx)
+        plot_muscle_activation(act, self.emg, [name.to_string() for name in eigen_model.muscleNames()],
+                               self.muscle_track_idx)
         plt.show()
 

@@ -1,9 +1,11 @@
+import os
+import time
 from types import NoneType
 
 from optim_params.ocp_utils import prepare_ocp, get_update_function, get_solver_options
 from bioptim import Solver, SolutionMerge, BiorbdModel
 import numpy as np
-from biosiglive import save
+from biosiglive import save, load
 
 
 class TorqueEstimator:
@@ -77,6 +79,7 @@ class TorqueEstimator:
 
     def compute_torque(self, from_direct_dynamics=False, from_inverse_dynamics=False,
                    with_external_loads=False, model_path=None, output_path=None, save_data=False, adapt_size_to_ocp=True):
+        self.save_data = save_data
         if not self.is_data_loaded:
             raise ValueError("Experimental data not loaded")
         if not from_direct_dynamics and not from_inverse_dynamics:
@@ -132,10 +135,14 @@ class TorqueEstimator:
 
     def _get_torque_from_forward_dynamics(self):
         if self.use_mhe:
+            if os.path.exists("_iterations_tmp.bio"):
+                os.remove("_iterations_tmp.bio")
+            tic = time.time()
             sol = self.ocp.solve(get_update_function(self.markers_target, self.f_ext, self.with_external_loads,
                                                      self.track_previous, self.kin_init, self.n_shooting,
-                                                     self.bio_model, self.ocp)
+                                                     self.bio_model, self.ocp, self.save_data)
                             , **get_solver_options(Solver.ACADOS()))
+            self.solving_time = time.time() - tic
 
         else:
             solver = Solver.IPOPT()
@@ -144,14 +151,13 @@ class TorqueEstimator:
             solver.set_tol(1e-5)
             solver.set_maximum_iterations(1000)
             sol = self.ocp.solve(solver=solver)
-
-        merged_states = sol.decision_states(to_merge=SolutionMerge.NODES)
-        merged_controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
-        self.q_ocp = merged_states["q"]
-        self.q_dot_ocp = merged_states["qdot"]
-        self.tau_ocp = merged_controls["tau"]
+        iterations = load("_iterations_tmp.bio")
+        os.remove("_iterations_tmp.bio")
+        self.q_ocp = iterations["q"]
+        self.q_dot_ocp = iterations["q_dot"]
+        self.tau_ocp = iterations["tau"]
         if self.with_external_loads:
-            self.f_ext_ocp = merged_controls["f_ext"]
+            self.f_ext_ocp = iterations["f_ext"]
 
     def _save_data(self, output_path, adapt_size=True):
         final_data_to_save = {}

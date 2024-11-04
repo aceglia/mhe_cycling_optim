@@ -204,8 +204,8 @@ def return_bounds(model, scaling_factor, p, ns, x, pas_tau, x0, tau_0, with_para
     lbg, ubg = None, None
     if l_norm_bounded:
         if "lm_optim" in params_to_optim:
-            ubg = 1.5
-            lbg = 0.5
+            ubg = 1.8
+            lbg = 0
 
     if with_param:
         lb_p = None

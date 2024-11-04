@@ -3,6 +3,7 @@ import os
 from optim_params.identification_utils import process_cycles, generate_random_idx
 import numpy as np
 from scipy.signal import find_peaks
+from bioptim import SolutionMerge
 import matplotlib.pyplot as plt
 
 
@@ -13,6 +14,8 @@ def get_data_dict(file_path, n_cycles=1, batch_size=1, rate=120, cycle_size=60, 
     em_delay_frame = int(em_delay * rate)
     if em_delay_frame != 0:
         for key in ocp_result.keys():
+            if not isinstance(ocp_result[key], np.ndarray):
+                continue
             if "q" in key or "q_dot" in key or "tau" in key or "f_ext" in key:
                 ocp_result[key] = ocp_result[key][:, em_delay_frame:]
             if "emg" in key:
@@ -36,20 +39,20 @@ def get_experimental_data(file_path, n_start=0, n_stop=None, source="dlc_1", dow
     """
     out_dict = {}
     data = load(file_path)
-    if n_stop is None:
-        n_stop = data["emg"].shape[1]
-    out_dict["f_ext"] = data["f_ext"][:, n_start:n_stop][..., ::downsample]
+    markers = data[source]["markers"]
+    n_stop = markers.shape[-1] if n_stop is None or n_stop > markers.shape[-1] else n_stop
+    out_dict["f_ext"] = data["shared"]["f_ext"][:, n_start:n_stop][..., ::downsample]
     out_dict["q_init"] = data[source]["q"][:, n_start:n_stop][..., ::downsample]
     out_dict["q_dot_init"] = data[source]["q_dot"][:, n_start:n_stop][..., ::downsample]
-    out_dict["emg"] = data["emg"][:, n_start:n_stop][..., ::downsample]
+    out_dict["emg"] = data["shared"]["emg"][:, n_start:n_stop][..., ::downsample]
     names = data[source]["marker_names"]
     ia_idx = names.index("SCAP_IA")
     ts_idx = names.index("SCAP_TS")
-    mark_ia = data[source][f"tracked_markers"][:, ia_idx, :].copy()
-    mark_ts = data[source][f"tracked_markers"][:, ts_idx, :].copy()
-    data[source][f"tracked_markers"][:, ia_idx, :] = mark_ts
-    data[source][f"tracked_markers"][:, ts_idx, :] = mark_ia
-    out_dict["markers_target"] = data[source][f"tracked_markers"][:, :, n_start:n_stop][..., ::downsample]
+    mark_ia = data[source][f"markers"][:, ia_idx, :].copy()
+    mark_ts = data[source][f"markers"][:, ts_idx, :].copy()
+    data[source][f"markers"][:, ia_idx, :] = mark_ts
+    data[source][f"markers"][:, ts_idx, :] = mark_ia
+    out_dict["markers_target"] = data[source][f"markers"][:, :, n_start:n_stop][..., ::downsample]
     return out_dict
 
 def get_all_file(participants, data_dir, trial_names=None, to_include=(), to_exclude=()):
@@ -65,11 +68,23 @@ def get_all_file(participants, data_dir, trial_names=None, to_include=(), to_exc
             continue
         if trial_names:
             to_include += trial_names[p] if isinstance(trial_names[p], list) else trial_names
-        all_files = [file for file in all_files if all([ext in file for ext in to_include]) and not any([ext in file for ext in to_exclude])]
+        all_files = [file for file in all_files if any([ext in file for ext in to_include]) and not any([ext in file for ext in to_exclude])]
         final_files = [f"{data_dir}{os.sep}{part}{os.sep}{file}" for file in all_files]
         parts.append([part for _ in final_files])
         all_path.append(final_files)
     return sum(all_path, []), sum(parts, [])
+
+def save_iteration(f_ext, markers, q_to_track, q_dot_to_track, sol, t, file_path):
+    merged_states = sol.decision_states(to_merge=SolutionMerge.NODES)
+    merged_controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
+    dic_to_save = {}
+    dic_to_save["q"] = merged_states["q"][..., 0:1]
+    dic_to_save["q_dot"] = merged_states["qdot"][..., 0:1]
+    dic_to_save["tau"] = merged_controls["tau"][..., 0:1]
+    if "f_ext" in merged_controls.keys():
+        dic_to_save["f_ext"] = merged_controls["f_ext"][..., 0:1]
+    save(dic_to_save, file_path, add_data=True)
+
 
 def save_torque_estimation(file_path, torque_estimation):
     """

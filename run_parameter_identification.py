@@ -1,18 +1,19 @@
+import os
+
 from optim_params.parameters_identifier import ParametersIdentifier
 from optim_params.identification_utils import get_all_muscle_len
 from optim_params.enum import Parameters
 from optim_params.file_io_utils import get_all_file, get_data_dict
-from biosiglive import load
 import biorbd
 import numpy as np
 
 
 weights = {"tau_tracking": 200,
-           "activation_tracking": 500,
+           "activation_tracking": 900,
            "min_act": 1,
-           "min_f_iso": 100,
+           "min_f_iso": 50,
            "min_lm_optim": 100,
-           "min_pas_torque": 10
+           "min_pas_torque": 50
            }
 
 emg_names_init = ["PectoralisMajorThorax",
@@ -60,7 +61,7 @@ def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_
             param_bounds[p_idx] = [0.5, 2.5]
         elif param == "lm_optim":
             all_muscle_len = get_all_muscle_len(eigen_model, q)
-            param_bounds[p_idx] = [0.8, 2.5]
+            param_bounds[p_idx] = [0.8, 1.5]
         elif param == "lt_slack":
             param_bounds[p_idx] = [0.8, 1.2]
         else:
@@ -79,39 +80,48 @@ if __name__ == '__main__':
     with_param = True
     with_residual_torque = True
     use_ratio_tracking = True
-    participants = [f"P{i}" for i in range(10, 17)]
+    participants = [f"P{i}" for i in range(16, 17)]
     params_to_optimize = [Parameters.f_iso, Parameters.lm_optim]
     data_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/reference_data"
     model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
 
-    files, part = get_all_file(participants, data_dir, to_include=["reference_torque", "gear_20"])
-    batch_size = 2
+
+    files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20"])
+    n_cycles = [4, 1,2,3,4,5,6]
+    batch_size = 30
     for file, participant in zip(files, part):
         list_tmp = file.replace(".bio", "").split("/")[-1].split("_")
         trial_short = "gear_" + list_tmp[list_tmp.index("gear") + 1]
-        model_path = model_dir + f"/{participant}/models/{trial_short}_model_scaled_dlc_ribs_new_seth_param.bioMod"
+        model_path = model_dir + f"/{participant}/output_models/{trial_short}_model_scaled_dlc_ribs_new_seth_param.bioMod"
         emg_names = emg_names_init.copy()
-        if part == 'P11':
+        if participant == 'P11':
             emg_names.pop(emg_names.index('LatissimusDorsi'))
-        identifier = ParametersIdentifier(params_to_optimize)
-        n_cycles, cycle_size = 4, 15
-        initial_data, idx_random = get_data_dict(file, n_cycles=n_cycles, batch_size=batch_size, rate=120,
-                                                          cycle_size=cycle_size, from_id=False)
-        if "min_lm_optim" in weights:
-            weights["lm_optim"] = weights["min_lm_optim"] * n_cycles #+ 10 * (n_cycles - 1)
-        if "min_f_iso" in weights:
-            
-            weights["min_f_iso"] = weights["min_f_iso"] * n_cycles #+ 10 * (n_cycles - 1)
-        for i in range(batch_size):
-            identifier.load_experimental_data(update_data(initial_data,idx_random[i]))
-            param_bounds, p_init, p_mapping_list, all_muscle_len, list_mapping = initialize_bounds_and_mapping(
-                params_to_optimize, model_path,
-                                          identifier.q, use_p_mapping=False)
-            identifier.initialize_problem(model_path, p_mapping_list, with_residual_torques=with_residual_torque,
-                                           threads=6, weights=weights, scaling_factor=(1, (1, 1), 1), emg_names=emg_names,
-                                          all_muscle_len=all_muscle_len, l_norm_bounded=False, p_init=p_init,
-                                          param_bounds=param_bounds, use_sx=True)
-            identifier.solve(save_results=False, output_file=data_dir, max_iter=5000, hessian_approximation="exact",
-                             linear_solver="ma57", plot=True, objective_scale_factor=10)
-            print(f"Optimization for participant {participant} and trial {trial_short} is done for batch {i}")
+        for n_cycle in n_cycles:
+            output_file = f"/mnt/shared/Projet_hand_bike_markerless/optim_params/results/{participant}"
+            if not os.path.exists(output_file):
+                os.mkdir(output_file)
+            output_file = output_file + f"/{trial_short}_n_cycles_{n_cycle}"
+
+            identifier = ParametersIdentifier(params_to_optimize)
+            cycle_size = 15
+            initial_data, idx_random = get_data_dict(file, n_cycles=n_cycle, batch_size=batch_size, rate=120,
+                                                              cycle_size=cycle_size, from_id=False)
+            if "min_lm_optim" in weights:
+                weights["lm_optim"] = weights["min_lm_optim"] * n_cycle #+ 10 * (n_cycles - 1)
+            if "min_f_iso" in weights:
+
+                weights["min_f_iso"] = weights["min_f_iso"] * n_cycle #+ 10 * (n_cycles - 1)
+            for i in range(batch_size):
+                identifier.load_experimental_data(update_data(initial_data,idx_random[i]))
+                param_bounds, p_init, p_mapping_list, all_muscle_len, list_mapping = initialize_bounds_and_mapping(
+                    params_to_optimize, model_path,
+                                              identifier.q, use_p_mapping=False)
+                identifier.initialize_problem(model_path, p_mapping_list, with_residual_torques=with_residual_torque,
+                                               threads=6, weights=weights, scaling_factor=(1, (1, 1), 1), emg_names=emg_names,
+                                              all_muscle_len=all_muscle_len, l_norm_bounded=False, p_init=p_init,
+                                              param_bounds=param_bounds, use_sx=True)
+                identifier.solve(save_results=False, output_file=output_file, max_iter=5000,
+                                 hessian_approximation="exact",
+                                 linear_solver="ma57", plot=True, objective_scale_factor=10, cycle_number=idx_random[i], batch_number=i)
+                print(f"Optimization for participant {participant} and trial {trial_short} is done for batch {i}")
 
