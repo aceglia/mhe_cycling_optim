@@ -7,7 +7,7 @@ from optim_params.enum import Parameters
 from optim_params.identification_utils import (get_initial_values, map_activation, return_muscle_torque_function,
                                                get_cost_n_dependant, get_cost_to_map, get_initial_parameters,
                                                return_bounds, return_param_from_mapping, compute_muscle_joint_torque,
-                                               apply_params)
+                                               apply_params, optimize_parameters_init)
 from optim_params.plt_utils import plot_joint_torques, plot_param, plot_muscle_activation
 from biosiglive import save
 import time
@@ -81,32 +81,48 @@ class ParametersIdentifier:
                            (["p"] if self.with_param else [])
         sym_list = self.symbolics.get(symbolics_to_get)
         J_func = Function("J1", sym_list, [j]).expand()
-        J_mapped = J_func.map(self.ns, "thread", self.threads)
         self.symbolics.add("x_all", self.model.nbMuscles() * self.ns, sx=use_sx)
         self.symbolics.add("p_all", self.n_p, sx=use_sx)
         x_split = reshape(self.symbolics.x_all, self.model.nbMuscles(), self.ns)
-        if self.l_norm_bounded:
-            idx_lm_optim = self.params_to_optim.index("lm_optim")
-            all_lm_optim = sum([len(p_map[0]) for p_map in self.p_mapping[:idx_lm_optim]])
-
-            g_fun = Function("g", [self.symbolics.muscles_len,
-                                   self.symbolics.lm_init,
-                                   self.symbolics.lm_optim], [g]).expand()
-            g_mapped = g_fun.map(self.ns, "thread", self.threads)
-            p_lm_optim = self.symbolics.p_all[all_lm_optim:all_lm_optim + len(self.p_mapping[idx_lm_optim][0])]
-            g = g_mapped(self.mx_variables.muscles_len, repmat(self.mx_variables.lm_init, 1, self.ns),
-                         repmat(p_lm_optim, 1, self.ns))
+        tau_split = None
         if self.with_torque:
             self.symbolics.add("pas_tau_all", len(self.residual_torque_idx) * self.ns, sx=use_sx)
             tau_split = reshape(self.symbolics.pas_tau_all, len(self.residual_torque_idx), self.ns)
-            obj_1 = J_mapped(x_split, self.mx_variables.get("q"), self.mx_variables.get("qdot"),
-                             self.mx_variables.get("tau"),
-                             self.mx_variables.get("emg"), tau_split, repmat(self.symbolics.p_all, 1, self.ns))
+        if self.threads == 1:
+            obj_1 = []
+            for i in range(self.ns):
+                if self.with_torque:
+                    obj_tmp = J_func(x_split[:, i], self.mx_variables.get("q")[:, i], self.mx_variables.get("qdot")[:, i],
+                                     self.mx_variables.get("tau")[:, i],
+                                     self.mx_variables.get("emg")[:, i], tau_split[:, i], self.symbolics.p_all)
+                else:
+                    obj_tmp = J_func(x_split, self.mx_variables.get("q"), self.mx_variables.get("qdot"),
+                                     self.mx_variables.get("tau"),
+                                     self.mx_variables.get("emg"), self.symbolics.p)
+                obj_1 = vertcat(obj_1, obj_tmp)
+            obj_1 = sum1(obj_1)
         else:
-            obj_1 = J_mapped(x_split, self.mx_variables.get("q"), self.mx_variables.get("qdot"),
-                             self.mx_variables.get("tau"),
-                             self.mx_variables.get("emg"), repmat(self.symbolics.p_all, 1, self.ns))
-        obj_1 = sum2(obj_1)
+            J_mapped = J_func.map(self.ns, "thread", self.threads)
+            if self.l_norm_bounded:
+                idx_lm_optim = self.params_to_optim.index("lm_optim")
+                all_lm_optim = sum([len(p_map[0]) for p_map in self.p_mapping[:idx_lm_optim]])
+
+                g_fun = Function("g", [self.symbolics.muscles_len,
+                                       self.symbolics.lm_init,
+                                       self.symbolics.lm_optim], [g]).expand()
+                g_mapped = g_fun.map(self.ns, "thread", self.threads)
+                p_lm_optim = self.symbolics.p_all[all_lm_optim:all_lm_optim + len(self.p_mapping[idx_lm_optim][0])]
+                g = g_mapped(self.mx_variables.muscles_len, repmat(self.mx_variables.lm_init, 1, self.ns),
+                             repmat(p_lm_optim, 1, self.ns))
+            if self.with_torque:
+                obj_1 = J_mapped(x_split, self.mx_variables.get("q"), self.mx_variables.get("qdot"),
+                                 self.mx_variables.get("tau"),
+                                 self.mx_variables.get("emg"), tau_split, repmat(self.symbolics.p_all, 1, self.ns))
+            else:
+                obj_1 = J_mapped(x_split, self.mx_variables.get("q"), self.mx_variables.get("qdot"),
+                                 self.mx_variables.get("tau"),
+                                 self.mx_variables.get("emg"), repmat(self.symbolics.p_all, 1, self.ns))
+            obj_1 = sum2(obj_1)
         return obj_1, g
 
     def _compute_non_mapped_cost_function(self, model_param_init, l_norm_bounded=False, use_sx=False):
@@ -132,7 +148,7 @@ class ParametersIdentifier:
                            with_residual_torques=True, torque_as_constraint=False, ignore_dof=None,
                            emg_names=None,
                            residual_torque_idx=None, scaling_factor=None, all_muscle_len=None, weights=None,
-                           threads=6, l_norm_bounded=False, param_bounds=None, p_init=None, use_sx=True):
+                           threads=1, l_norm_bounded=False, param_bounds=None, p_init=None, use_sx=True):
         self.g = None
         self.scaling_factor = scaling_factor
         self.weights = weights
@@ -148,6 +164,8 @@ class ParametersIdentifier:
         self.l_norm_bounded = l_norm_bounded
         self.param_bounds = param_bounds
         self.p_init = p_init
+        if self.p_init is None:
+            self.p_init = [[1 for _ in range(len(p_mapping[p][0]))] for p in range(len(p_mapping))]
         muscle_list = [name.to_string() for name in self.model.muscleNames()]
         muscle_track_idx = []
         self.tic = time.time()
@@ -166,9 +184,14 @@ class ParametersIdentifier:
         if "lm_optim" in self.params_to_optim:
             self.lm_optim_init = model_param_init[self.params_to_optim.index("lm_optim")]
 
-        normalized_l = self.all_muscle_len / np.repeat(
-            np.array(convert_to_casadi(self.lm_optim_init, to_array=True)).reshape(-1, 1), self.all_muscle_len.shape[1],
-            axis=1)
+        lm_optim = np.array(convert_to_casadi(model_param_init[self.params_to_optim.index("lm_optim")], to_array=True)).reshape(-1, 1)
+        for m in range(self.model.nbMuscles()):
+            norm_len = self.all_muscle_len[m, :] / (lm_optim[m, 0] * self.p_init[self.params_to_optim.index("lm_optim")][m])
+            if 0.5 < norm_len.max() < 1.5 and 0.5 < norm_len.min() < 1.5:
+                continue
+            else:
+                self.p_init[self.params_to_optim.index("lm_optim")][m] = optimize_parameters_init(self.all_muscle_len[m, :], lm_optim[m, 0])
+
         self.ns = self.q.shape[1]
         self._compute_symbolics()
         self._compute_mx_variables(use_sx=use_sx)

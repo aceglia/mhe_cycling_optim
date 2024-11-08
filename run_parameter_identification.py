@@ -12,7 +12,7 @@ weights = {"tau_tracking": 200,
            "activation_tracking": 900,
            "min_act": 1,
            "min_f_iso": 50,
-           "min_lm_optim": 100,
+           "min_lm_optim": 200,
            "min_pas_torque": 50
            }
 
@@ -80,7 +80,7 @@ if __name__ == '__main__':
     with_param = True
     with_residual_torque = True
     use_ratio_tracking = True
-    participants = [f"P{i}" for i in range(16, 17)]
+    participants = [f"P{i}" for i in range(10, 17)]
     params_to_optimize = [Parameters.f_iso, Parameters.lm_optim]
     data_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/reference_data"
     model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
@@ -117,8 +117,8 @@ if __name__ == '__main__':
                     params_to_optimize, model_path,
                                               identifier.q, use_p_mapping=False)
                 identifier.initialize_problem(model_path, p_mapping_list, with_residual_torques=with_residual_torque,
-                                               threads=6, weights=weights, scaling_factor=(1, (1, 1), 1), emg_names=emg_names,
-                                              all_muscle_len=all_muscle_len, l_norm_bounded=False, p_init=p_init,
+                                               threads=1, weights=weights, scaling_factor=(1, (1, 1), 1), emg_names=emg_names,
+                                              all_muscle_len=all_muscle_len, l_norm_bounded=False, p_init=None,
                                               param_bounds=param_bounds, use_sx=True)
                 identifier.solve(save_results=False, output_file=output_file, max_iter=5000,
                                  hessian_approximation="exact",

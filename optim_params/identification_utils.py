@@ -204,8 +204,8 @@ def return_bounds(model, scaling_factor, p, ns, x, pas_tau, x0, tau_0, with_para
     lbg, ubg = None, None
     if l_norm_bounded:
         if "lm_optim" in params_to_optim:
-            ubg = 1.8
-            lbg = 0
+            ubg = 1.5
+            lbg = 0.5
 
     if with_param:
         lb_p = None
@@ -214,8 +214,8 @@ def return_bounds(model, scaling_factor, p, ns, x, pas_tau, x0, tau_0, with_para
         for p_idx, param in enumerate(params_to_optim):
             lb, ub = param_bounds[p_idx][0], param_bounds[p_idx][1]
             n_p = len(p_mapping[p_idx][0])
-            init_p = ca.DM.zeros(n_p) + p_init[p_idx] * scaling_factor[1][p_idx] if init_p is None else ca.vertcat(init_p,
-                                                                                             ca.DM.zeros(n_p) + p_init[p_idx] * scaling_factor[1][p_idx])
+            init_p = p_init[p_idx] * scaling_factor[1][p_idx] if init_p is None else ca.vertcat(init_p,
+                                                                                             p_init[p_idx] * scaling_factor[1][p_idx])
             lb_p = ca.DM.zeros(n_p) + lb * scaling_factor[1][p_idx] if lb_p is None else ca.vertcat(lb_p,
                                                                                              ca.DM.zeros(n_p) + lb *
                                                                                              scaling_factor[1][p_idx])
@@ -343,4 +343,33 @@ def apply_params(model, param_list, params_to_optim, model_param_init=None, with
     return model
 
 
+
+def optimize_parameters_init(all_length, param_value):
+    from scipy.optimize import minimize
+    # Define the function with a penalty if the parameter goes out of the range
+    def objective(x, lengths, lower_bound, upper_bound):
+        # If x is within bounds, return zero penalty (objective is zero)
+        norm_len = (lengths / (param_value * x))
+        if lower_bound <= norm_len.min() <= upper_bound and lower_bound <= norm_len.max() <= upper_bound:
+            return 0
+        # Apply a penalty proportional to the distance from the nearest bound if out of range
+        elif lower_bound >= norm_len.min():
+           return  (lower_bound - norm_len.min()) ** 2
+        elif upper_bound <= norm_len.max():
+            return (norm_len.max() - upper_bound) ** 2
+        else:
+            return 0
+
+
+    # Set bounds and initial guess
+    lower_bound = 0.5
+    upper_bound = 1.5
+    initial_guess = 1.0  # Initial guess outside the range
+
+    # Run optimization to find the parameter value within bounds
+    result = minimize(objective, initial_guess, args=(all_length, lower_bound, upper_bound), bounds=[(lower_bound, upper_bound)])
+
+    # Extract optimized parameter
+    optimized_parameter = result.x[0]
+    return optimized_parameter
 
