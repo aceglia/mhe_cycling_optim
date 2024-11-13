@@ -19,7 +19,7 @@ def plot_muscle_activation(muscle_activations, emg=None, muscle_names=None, musc
         plt.xlabel('Time (s)')
         plt.ylabel('Muscle activation')
 
-def plot_joint_torques(muscle_torques, reference_torques, residuals_torques=None, joint_names=None):
+def plot_joint_torques(muscle_torques, reference_torques, residuals_torques=None, muscle_torque_optim=None, joint_names=None):
     plt.figure(f"Joint torques")
     if residuals_torques is None:
         residuals_torques = np.zeros_like(muscle_torques)
@@ -28,8 +28,10 @@ def plot_joint_torques(muscle_torques, reference_torques, residuals_torques=None
     for i in range(0, reference_torques.shape[0]):
         plt.subplot(int(np.ceil(reference_torques.shape[0]/4)), 4, i + 1)
         plt.plot(reference_torques[i, :], color="r")
-        plt.plot(muscle_torques[i, :] + residuals_torques[i, :], color="b")
+        plt.plot(muscle_torques[i, :], color="b")
         plt.plot(residuals_torques[i, :], color="g", alpha=0.5)
+        if muscle_torque_optim is not None:
+            plt.plot(muscle_torque_optim[i, :] , ".-", color="y")
         plt.title(joint_names[i])
 
 def plot_param(param, muscle_names=None, param_name=None, bounds=None, initial_value=1):

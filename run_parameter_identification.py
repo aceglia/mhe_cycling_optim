@@ -8,12 +8,12 @@ import biorbd
 import numpy as np
 
 
-weights = {"tau_tracking": 200,
-           "activation_tracking": 900,
-           "min_act": 1,
-           "min_f_iso": 50,
-           "min_lm_optim": 200,
-           "min_pas_torque": 50
+weights = {"tau_tracking": 1000,
+           "activation_tracking": 100,
+           "min_act": 10,
+           "min_f_iso": 1,
+           "min_lm_optim": 3,
+           "min_pas_torque": 100
            }
 
 emg_names_init = ["PectoralisMajorThorax",
@@ -52,16 +52,16 @@ def update_data(initial_data, random_idx_list):
 
 def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_mapping=False):
     optim_param_list = [p.value for p in optim_param_list]
-    param_bounds = [[0, 1] for _ in optim_param_list]
+    param_bounds = [[0.0, 1.0] for _ in optim_param_list]
     p_init = [1] * len(optim_param_list)
     all_muscle_len = None
     eigen_model = biorbd.Model(biorbd_model_path)
     for p_idx, param in enumerate(optim_param_list):
         if param == "f_iso":
-            param_bounds[p_idx] = [0.5, 2.5]
+            param_bounds[p_idx] = [0.1, 15]
         elif param == "lm_optim":
             all_muscle_len = get_all_muscle_len(eigen_model, q)
-            param_bounds[p_idx] = [0.8, 1.5]
+            param_bounds[p_idx] = [0.5, 5]
         elif param == "lt_slack":
             param_bounds[p_idx] = [0.8, 1.2]
         else:
@@ -87,7 +87,7 @@ if __name__ == '__main__':
 
 
     files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20"])
-    n_cycles = [4, 1,2,3,4,5,6]
+    n_cycles = [3, 1,2,3,4,5,6]
     batch_size = 30
     for file, participant in zip(files, part):
         list_tmp = file.replace(".bio", "").split("/")[-1].split("_")
@@ -103,13 +103,12 @@ if __name__ == '__main__':
             output_file = output_file + f"/{trial_short}_n_cycles_{n_cycle}"
 
             identifier = ParametersIdentifier(params_to_optimize)
-            cycle_size = 15
+            cycle_size = 20
             initial_data, idx_random = get_data_dict(file, n_cycles=n_cycle, batch_size=batch_size, rate=120,
-                                                              cycle_size=cycle_size, from_id=False)
+                                                              cycle_size=cycle_size, from_id=False, em_delay=0.0)
             if "min_lm_optim" in weights:
                 weights["lm_optim"] = weights["min_lm_optim"] * n_cycle #+ 10 * (n_cycles - 1)
             if "min_f_iso" in weights:
-
                 weights["min_f_iso"] = weights["min_f_iso"] * n_cycle #+ 10 * (n_cycles - 1)
             for i in range(batch_size):
                 identifier.load_experimental_data(update_data(initial_data,idx_random[i]))
@@ -119,9 +118,14 @@ if __name__ == '__main__':
                 identifier.initialize_problem(model_path, p_mapping_list, with_residual_torques=with_residual_torque,
                                                threads=1, weights=weights, scaling_factor=(1, (1, 1), 1), emg_names=emg_names,
                                               all_muscle_len=all_muscle_len, l_norm_bounded=False, p_init=None,
-                                              param_bounds=param_bounds, use_sx=True)
-                identifier.solve(save_results=False, output_file=output_file, max_iter=5000,
+                                              param_bounds=param_bounds, use_sx=True, add_muscle_torque_constraint=False)
+                identifier.solve(save_results=False, output_file=output_file, max_iter=4000,
                                  hessian_approximation="exact",
-                                 linear_solver="ma57", plot=True, objective_scale_factor=10, cycle_number=idx_random[i], batch_number=i)
+                                 linear_solver="ma57",
+                                 #obj_scaling_factor=0.0001,
+                                 print_level=10,
+                                 # mu_strategy="adaptive",
+                                 # nlp_scaling_method = "none",
+                                 plot=True, objective_scale_factor=100000000, cycle_number=idx_random[i], batch_number=i)
                 print(f"Optimization for participant {participant} and trial {trial_short} is done for batch {i}")
 

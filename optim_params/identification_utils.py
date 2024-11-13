@@ -103,15 +103,19 @@ def get_cost_to_map(scaling_factor, symbolics, weights,
                     bounds_l_norm=False,
                     params_to_optim=None,
                     param_init=None,
+                    muscle_torque_as_constraint=False,
                     ):
     g = None
     j = 0
     x, q, qdot = symbolics.x, symbolics.q, symbolics.qdot
     p, act, tau, pas_tau = symbolics.p, symbolics.emg, symbolics.tau, symbolics.pas_tau
+
     if with_torque:
         torque_weights = np.array([weights["min_pas_torque"] for _ in range(pas_tau.shape[0])])
         for tau_idx in range(pas_tau.shape[0]):
-            j += torque_weights[tau_idx] * (pas_tau[tau_idx]) ** 2
+            if tau_idx in [5,6,7,8]:
+                continue
+            j += torque_weights[tau_idx] * (pas_tau[tau_idx] ** 2)
 
     if bounds_l_norm and "lm_optim" in params_to_optim:
         g = (ca.fabs(symbolics.muscles_len) /
@@ -122,11 +126,17 @@ def get_cost_to_map(scaling_factor, symbolics, weights,
     # min act
     for m in range(x.shape[0]):
         if m not in muscle_track_idx:
-            j += weights["min_act"] * (x[m]) ** 2
+            j += weights["min_act"] * (x[m] ** 2)
         else:
-            j += weights["activation_tracking"] * ((x[m]) - act[muscle_track_idx.index(m)] * scaling_factor[0]) ** 2
-
-    mus_tau = _get_muscle_torque(x, q, qdot, p, p_mapping, muscle_casadi_function, scaling_factor, with_param)
+            j += weights["activation_tracking"] * (((x[m]) - act[muscle_track_idx.index(m)] * scaling_factor[0]) ** 2)
+    if not muscle_torque_as_constraint:
+        mus_tau = _get_muscle_torque(x, q, qdot, p, p_mapping, muscle_casadi_function, scaling_factor, with_param)
+    else:
+        mus_tau = symbolics.muscle_torque
+    # if muscle_torque_as_constraint:
+    #     mus_tau_from_act = _get_muscle_torque(x, q, qdot, p, p_mapping, muscle_casadi_function, scaling_factor, with_param)
+    #     #f = Function("msj", [x, q, qdot, p], [mus_tau_from_act])
+    #     g =  mus_tau_from_act - symbolics.muscle_torque
     pas_tau_tmp = pas_tau if with_torque else None
     count = 0
     for t in range(mus_tau.shape[0]):
@@ -138,9 +148,26 @@ def get_cost_to_map(scaling_factor, symbolics, weights,
         else:
             continue
         sqrt = 1 if tau_as_constraint else 2
-        factor = 0.3 if t == 3 else 1
-        j += weights["tau_tracking"] * (factor * (tau[t] * scaling_factor[2] - to_substract)) ** sqrt
+        factor = 0.5 if t in [3] else 1
+        factor = 0.01 if t in [9] else factor
+
+        j += factor * weights["tau_tracking"] * ((tau[t] * scaling_factor[2] - to_substract) ** sqrt)
     return j, g
+
+def return_obj_function(obj_funct, act, q, qdot, tau, emg, p=None, tau_res=None, tau_muscle=None):
+    obj_tmp = None
+    if tau_res is not None:
+        if tau_muscle is not None:
+            obj_tmp = obj_funct(act, q,
+                             qdot,
+                             tau,
+                             emg, tau_res, p,
+                             tau_muscle)
+        else:
+            obj_tmp = obj_funct(act, q, qdot, tau, emg, tau_res, p)
+    else:
+        obj_tmp = obj_funct(act, q, qdot, tau, emg, p)
+    return obj_tmp
 
 def get_cost_n_dependant(p, p_mapping, params_to_optim, scaling_factor,weights, use_ratio_tracking=False,  param_init=None,
                      bounds_l_norm=False, mx_variables=None, use_sx=False):
@@ -152,8 +179,8 @@ def get_cost_n_dependant(p, p_mapping, params_to_optim, scaling_factor,weights, 
         p_tmp = p[count: count + len(p_mapping[p_idx][0])]
         # for p_idx_bis in range(p_tmp.shape[0]):
         #     J_params += (weights[f"min_{params_to_optim[p_idx]}"] * (p_tmp[p_idx_bis] - 1 * scaling_factor[1][p_idx])) ** 2
-        J_params += ca.sum1(weights[f"min_{params_to_optim[p_idx]}"] * (
-                    p_tmp - scaling_factor[1][p_idx]) ** 2)
+        J_params += ca.sum1(weights[f"min_{params_to_optim[p_idx]}"] * ((
+                    p_tmp - scaling_factor[1][p_idx]) ** 2))
         if params_to_optim[p_idx] == "lm_optim":
             lm_opti = p[count: count + len(p_mapping[p_idx][0])]
         elif params_to_optim[p_idx] == "lt_slack":
@@ -180,7 +207,7 @@ def get_cost_n_dependant(p, p_mapping, params_to_optim, scaling_factor,weights, 
             lm_optimized = lm_init * lm_opti[i]
             lt_slack_optimized = lt_init * lt_slack[i]
             ratio = lt_init / lm_init
-            J_params += weights["ratio_tracking"] * ((lt_slack_optimized / lm_optimized - ratio)) ** 2
+            J_params += weights["ratio_tracking"] * ((lt_slack_optimized / lm_optimized - ratio) ** 2)
     #     J = _add_to_J(J, weights["ratio_tracking"], to_minimize)
     if isinstance(g, list) and len(g) == 0:
         g = None
@@ -197,11 +224,17 @@ def get_initial_values(model, passive_torque_idx, ns, muscle_track_idx, act, sca
 
     return x0, tau_init
 
-def return_bounds(model, scaling_factor, p, ns, x, pas_tau, x0, tau_0, with_param=True, with_torque=True,
-                   p_init=None, params_to_optim=(), p_mapping=None, param_bounds=None, l_norm_bounded=False, tau_bounds=50):
+def return_bounds(model, scaling_factor, p, ns, x, pas_tau, muscle_torque, x0, tau_0, with_param=True, with_torque=True,
+                   p_init=None, params_to_optim=(), p_mapping=None, param_bounds=None, l_norm_bounded=False, g=None, tau_bounds=50):
     lbx = ca.DM.zeros(model.nbMuscles() * (ns)) + (0.0001) * scaling_factor[0]
     ubx = ca.DM.ones(model.nbMuscles() * (ns)) * scaling_factor[0]
-    lbg, ubg = None, None
+    if g is not None:
+        lbg = ca.DM.zeros(g.shape[0]) - 0
+        ubg = ca.DM.zeros(g.shape[0]) + 0
+    else:
+        lbg = ca.DM.zeros(0)
+        ubg = ca.DM.zeros(0)
+
     if l_norm_bounded:
         if "lm_optim" in params_to_optim:
             ubg = 1.5
@@ -214,8 +247,8 @@ def return_bounds(model, scaling_factor, p, ns, x, pas_tau, x0, tau_0, with_para
         for p_idx, param in enumerate(params_to_optim):
             lb, ub = param_bounds[p_idx][0], param_bounds[p_idx][1]
             n_p = len(p_mapping[p_idx][0])
-            init_p = p_init[p_idx] * scaling_factor[1][p_idx] if init_p is None else ca.vertcat(init_p,
-                                                                                             p_init[p_idx] * scaling_factor[1][p_idx])
+            init_p = np.array(p_init[p_idx]) * scaling_factor[1][p_idx] if init_p is None else ca.vertcat(init_p,
+                                                                                             np.array(p_init[p_idx]) * scaling_factor[1][p_idx])
             lb_p = ca.DM.zeros(n_p) + lb * scaling_factor[1][p_idx] if lb_p is None else ca.vertcat(lb_p,
                                                                                              ca.DM.zeros(n_p) + lb *
                                                                                              scaling_factor[1][p_idx])
@@ -234,6 +267,14 @@ def return_bounds(model, scaling_factor, p, ns, x, pas_tau, x0, tau_0, with_para
         ubx = ca.vertcat(ubx, ub_tau)
         x0 = ca.vertcat(x0, init_tau)
         x = ca.vertcat(x, pas_tau)
+    if muscle_torque is not None:
+        lb_tau = ca.DM.ones(muscle_torque.shape[0]) * -100 * scaling_factor[2]
+        ub_tau  = ca.DM.ones(muscle_torque.shape[0]) * 100 * scaling_factor[2]
+        init = ca.DM.zeros(muscle_torque.shape[0])
+        x0 = ca.vertcat(x0, init)
+        x = ca.vertcat(x, muscle_torque)
+        lbx = ca.vertcat(lbx, lb_tau)
+        ubx = ca.vertcat(ubx, ub_tau)
     return {"lbx": lbx, "ubx": ubx, "lbg": lbg, "ubg": ubg, "x0": x0, "x": x}
 
 
@@ -372,4 +413,5 @@ def optimize_parameters_init(all_length, param_value):
     # Extract optimized parameter
     optimized_parameter = result.x[0]
     return optimized_parameter
+
 
