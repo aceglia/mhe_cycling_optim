@@ -277,15 +277,15 @@ def optimize_parameters_init(all_length, param_value):
 
 
 if __name__ == '__main__':
+    import os
     participants = [f"P{i}" for i in range(12, 17)]
-    data_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/reference_data"
-    model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
+    prefix = "/mnt/shared/" if os.name == 'posix' else r"Q:/"
+    data_dir = f"{prefix}Projet_hand_bike_markerless/optim_params/reference_data"
+    model_dir = f"{prefix}Projet_hand_bike_markerless/RGBD/"
     files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20"])
-    data= load(files[0])
+    data = load(files[0])
     end_idx = 1000
     q = data["q_ocp"][..., :end_idx]
     q_dot = data["q_dot_ocp"][..., :end_idx]
-    tau = data["tau_ocp"][..., :end_idx]
-
     model = model_dir + f"/{part[0]}/output_models/gear_20_model_scaled_dlc_ribs_new_seth_param.bioMod"
-    check_muscle_sanity(model, q, q_dot,tau, plot_passive=True, plot_moment_arm=True, plot_length=True, color="r")
+    check_muscle_sanity(model, q, q_dot, plot_passive=True, plot_moment_arm=True, plot_length=True, color="r")

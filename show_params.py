@@ -1,7 +1,9 @@
 from biosiglive import load
 import matplotlib.pyplot as plt
+from optim_params.plt_utils import plot_param
 import numpy as np
 import os
+import biorbd
 
 if __name__ == '__main__':
 
@@ -44,99 +46,109 @@ if __name__ == '__main__':
                    'BIC_long',  # 21
                    'BIC_brevis', ]  # 21
 
-    participants = [f"P{i}" for i in range(10, 15)]
-    participants.pop(participants.index("P12"))
+    participants = [f"P{i}" for i in range(10, 17)]
+    # participants.pop(participants.index("P12"))
     # participants.pop(participants.index("P15"))
     # participants.pop(participants.index("P16"))
     #participants = ["P10"]
-
+    prefix = "/mnt/shared/" if os.name == "posix" else "Q:/"
+    model = f"{prefix}Projet_hand_bike_markerless/RGBD/P10/model_scaled_dlc_ribs_param.bioMod"
+    model = biorbd.Model(model)
+    muscle_names = [m.to_string() for m in model.muscleNames()]
     all_params = np.zeros((len(participants), 2, len(muscle_names)))
     all_params_id = np.zeros((len(participants), 2, len(muscle_names)))
     trial = "gear_20"
     node = 5
+    n_cycles = [1, 2, 3, 4, 5]
+    result_dir = f"{prefix}Projet_hand_bike_markerless/optim_params/results"
 
-    result_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/results"
-    for p,  part in enumerate(participants):
+    for cycle in n_cycles:
+        for p,  part in enumerate(participants):
+            # param_path = f"{result_dir}/{part}/gear_20_n_cycles_{cycle}.bio"
+                # data_tmp = load(param_path, merge=False)
+                # plot_param(p_list, [name.to_string() for name in eigen_model.muscleNames()], self.params_to_optim,
+                #            self.param_bounds, 1)
+                # print("participant:", part, "cycle:", cycle, "\n")
+                # print([data_tmp[k]["solver_out"]["return_status"] for k in range(len(data_tmp))])
+            param_path = f"{result_dir}/{part}/gear_20_n_cycles_{cycle}.bio"
+            data_tmp = load(param_path, merge=False)
+            data_tmp = data_tmp[1]
+            all_params[p, 0, :], all_params[p, 1, :] = np.array(data_tmp["p"][0]),  np.array(data_tmp["p"][1])
+            # param_path_id = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_id_{node}_test.bio"
+            # data_tmp_id = load(param_path_id)
+            # all_params_id[p, 0, :], all_params_id[p, 1, :] = np.array(data_tmp_id["p"][0])[:, 0],  np.array(data_tmp_id["p"][1])[:, 0]
+        all_params = np.round(all_params, 3)
+        all_params_id = np.round(all_params_id, 3)
 
-        param_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{node}_test_quad.bio"
-        data_tmp = load(param_path, merge=False)
-        data_tmp = data_tmp[0]
-        all_params[p, 0, :], all_params[p, 1, :] = np.array(data_tmp["p"][0])[:, 0],  np.array(data_tmp["p"][1])[:, 0]
-        # param_path_id = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_id_{node}_test.bio"
-        # data_tmp_id = load(param_path_id)
-        # all_params_id[p, 0, :], all_params_id[p, 1, :] = np.array(data_tmp_id["p"][0])[:, 0],  np.array(data_tmp_id["p"][1])[:, 0]
-    all_params = np.round(all_params, 3)
-    all_params_id = np.round(all_params_id, 3)
+        import matplotlib.pyplot as plt
+        import numpy as np
+        fig_name = ["F_iso", "l_optim"]
+        for p in range(2):
+            # Example data (35 muscles and 8 participants)
+            participant_data = all_params[:, p, :].T # Replace this with your actual data
+            participant_data_id = all_params_id[:, p, :].T # Replace this with your actual data
 
-    import matplotlib.pyplot as plt
-    import numpy as np
-    fig_name = ["F_iso", "l_optim"]
-    for p in range(2):
-        # Example data (35 muscles and 8 participants)
-        participant_data = all_params[:, p, :].T # Replace this with your actual data
-        participant_data_id = all_params_id[:, p, :].T # Replace this with your actual data
+            # Plotting
+            plt.figure(fig_name[p])
 
-        # Plotting
-        plt.figure(fig_name[p])
+            # Number of participants
+            n_participants = participant_data.shape[1]
 
-        # Number of participants
-        n_participants = participant_data.shape[1]
+            # Width of each bar
+            bar_width = 0.1
 
-        # Width of each bar
-        bar_width = 0.1
+            # Indices for muscle positions
+            indices = np.arange(len(muscle_names))
+            # Width of each bar and the space between muscles
+            bar_width = 0.1
+            muscle_spacing = 0.3
 
-        # Indices for muscle positions
-        indices = np.arange(len(muscle_names))
-        # Width of each bar and the space between muscles
-        bar_width = 0.1
-        muscle_spacing = 0.3
+            # Indices for muscle positions with added spacing
+            indices = np.arange(len(muscle_names)) * (bar_width * 2 * n_participants + muscle_spacing)
+            indices = np.linspace(0, len(muscle_names), len(muscle_names))
 
-        # Indices for muscle positions with added spacing
-        indices = np.arange(len(muscle_names)) * (bar_width * 2 * n_participants + muscle_spacing)
-        indices = np.linspace(0, len(muscle_names), len(muscle_names))
+            # Generate a color map for the participants
+            colors = plt.cm.get_cmap('tab10', n_participants)
 
-        # Generate a color map for the participants
-        colors = plt.cm.get_cmap('tab10', n_participants)
+            # Plot bars for participants
+            count = 0
+            for i in range(n_participants):
+                # Separate data into above and below 1
+                above_one = np.clip(participant_data[:, i] - 1, 0, None)  # Values above 1
+                below_one = np.clip(participant_data[:, i] - 1, None, 0)  # Values below 1
+                above_one_id = np.clip(participant_data_id[:, i] - 1, 0, None)  # Values above 1
+                below_one_id = np.clip(participant_data_id[:, i] - 1, None, 0)  # Values below 1
 
-        # Plot bars for participants
-        count = 0
-        for i in range(n_participants):
-            # Separate data into above and below 1
-            above_one = np.clip(participant_data[:, i] - 1, 0, None)  # Values above 1
-            below_one = np.clip(participant_data[:, i] - 1, None, 0)  # Values below 1
-            above_one_id = np.clip(participant_data_id[:, i] - 1, 0, None)  # Values above 1
-            below_one_id = np.clip(participant_data_id[:, i] - 1, None, 0)  # Values below 1
+                # Plot above 1 values
+                plt.bar(indices + count, above_one, width=bar_width, label=f'Participant {i + 1}', color=colors(i))
+                #plt.bar(indices + count + bar_width, above_one_id, width=bar_width, label=f'Participant {i + 1}_id', color=colors(i), hatch="*")
 
-            # Plot above 1 values
-            plt.bar(indices + count, above_one, width=bar_width, label=f'Participant {i + 1}', color=colors(i))
-            #plt.bar(indices + count + bar_width, above_one_id, width=bar_width, label=f'Participant {i + 1}_id', color=colors(i), hatch="*")
+                # Plot below 1 values (in the negative direction)
+                plt.bar(indices + count, below_one, width=bar_width, color=colors(i))
+                #plt.bar(indices + count + bar_width, below_one_id, width=bar_width, color=colors(i), hatch="*")
+                count += (bar_width * 2)
 
-            # Plot below 1 values (in the negative direction)
-            plt.bar(indices + count, below_one, width=bar_width, color=colors(i))
-            #plt.bar(indices + count + bar_width, below_one_id, width=bar_width, color=colors(i), hatch="*")
-            count += (bar_width * 2)
+            # Set x-ticks and labels
+            idxs = indices + (len(participants) * bar_width * 2)/2
+            for m in range(len(muscle_names)):
+                plt.axvline(idxs[m], linestyle='--', alpha=0.2, c="k")
+            plt.xticks(indices + (len(participants) * bar_width * 2)/2, muscle_names, rotation=90)
+            y_ticks = np.arange(0.8-1, 1.8-1, 0.1)  # Define range for y-ticks
+            y_labels = [f'{1 + tick:.1f}' for tick in y_ticks]  # Create labels centered on 1
+            plt.yticks(y_ticks, y_labels)
+            # Center y-axis at 1
+            plt.axhline(y=0, color='black', linestyle='--')
+            plt.axhline(y=0.8, color='black', linestyle='--')
+            plt.axhline(y=-0.2, color='black', linestyle='--')
 
-        # Set x-ticks and labels
-        idxs = indices + (len(participants) * bar_width * 2)/2
-        for m in range(len(muscle_names)):
-            plt.axvline(idxs[m], linestyle='--', alpha=0.2, c="k")
-        plt.xticks(indices + (len(participants) * bar_width * 2)/2, muscle_names, rotation=90)
-        y_ticks = np.arange(0.8-1, 1.8-1, 0.1)  # Define range for y-ticks
-        y_labels = [f'{1 + tick:.1f}' for tick in y_ticks]  # Create labels centered on 1
-        plt.yticks(y_ticks, y_labels)
-        # Center y-axis at 1
-        plt.axhline(y=0, color='black', linestyle='--')
-        plt.axhline(y=0.8, color='black', linestyle='--')
-        plt.axhline(y=-0.2, color='black', linestyle='--')
+            # Labels and title
+            plt.ylabel('Deviation from 1')
+            plt.title('Bidirectional Plot of Optimized Parameters for Muscles Across Participants')
 
-        # Labels and title
-        plt.ylabel('Deviation from 1')
-        plt.title('Bidirectional Plot of Optimized Parameters for Muscles Across Participants')
+            # Add legend
+            plt.legend()
 
-        # Add legend
-        plt.legend()
-
-        # Display the plot
-        plt.tight_layout()
-    plt.show()
+            # Display the plot
+            plt.tight_layout()
+        plt.show()
 

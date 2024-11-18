@@ -3,7 +3,10 @@ import os
 from optim_params.identification_utils import process_cycles, generate_random_idx
 import numpy as np
 from scipy.signal import find_peaks
-from bioptim import SolutionMerge
+try:
+    from bioptim import SolutionMerge
+except:
+    pass
 import matplotlib.pyplot as plt
 
 
