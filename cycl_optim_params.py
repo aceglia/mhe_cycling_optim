@@ -1135,7 +1135,7 @@ def _get_passive_joint_torque(model, q, qdot, with_casadi=True):
 
     return passive_torque
 
-def J_hes():
+def J_hes(model, J, symbolics_list):
     model_ca = model
     if with_torque:
         hes_params = ca.vertcat(x, pas_tau, p_sym)
@@ -1172,7 +1172,6 @@ def J_hes():
     min_hes = np.ndarray.min(jac_func_num)
     import matplotlib.cm as mcm
     import matplotlib.colors as mcolors
-
     fig_obj, axis_obj = plt.subplots(1, 1)
     jac_func_num[~(jac_func_num != 0).astype(bool)] = np.nan
     current_cmap3 = mcm.get_cmap("seismic")

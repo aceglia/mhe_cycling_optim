@@ -12,6 +12,12 @@ def get_data_dict(file_path, n_cycles=1, batch_size=1, rate=120, cycle_size=60, 
     ocp_result = load(file_path)
     peaks = find_peaks(ocp_result["q" + suffix][-2, :], height=0.5)[0]
     em_delay_frame = int(em_delay * rate)
+    emg_file = f"/mnt/shared/Projet_hand_bike_markerless/process_data/P10/result_biomech_gear_20_for_params_new_mvc.bio"
+    load_emg = load(emg_file)
+    for i in range(ocp_result["emg"].shape[0]):
+        plt.subplot(ocp_result["emg"].shape[0] // 3 + 1, 3, 1)
+        plt.plot(ocp_result["emg"][i, :])
+        plt.plot(load_emg["emg"][i, :])
     if em_delay_frame != 0:
         for key in ocp_result.keys():
             if not isinstance(ocp_result[key], np.ndarray):

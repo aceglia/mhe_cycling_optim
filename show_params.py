@@ -57,6 +57,7 @@ if __name__ == '__main__':
 
     result_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/results"
     for p,  part in enumerate(participants):
+
         param_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{node}_test_quad.bio"
         data_tmp = load(param_path, merge=False)
         data_tmp = data_tmp[0]

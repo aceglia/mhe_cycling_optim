@@ -17,7 +17,7 @@ def get_all_muscle_len(model, q):
 
 
 def generate_random_idx(n_cycles, batch, n_data):
-    #random.seed(10)
+    random.seed(1000)
     combinations = list(itertools.combinations(list(range(1, int(n_data-1))), n_cycles))
     random_idx = random.sample(range(0, len(combinations)), batch)
     return [list(combinations[i]) for i in random_idx]
@@ -113,9 +113,11 @@ def get_cost_to_map(scaling_factor, symbolics, weights,
     if with_torque:
         torque_weights = np.array([weights["min_pas_torque"] for _ in range(pas_tau.shape[0])])
         for tau_idx in range(pas_tau.shape[0]):
-            if tau_idx in [5,6,7,8]:
-                continue
-            j += torque_weights[tau_idx] * (pas_tau[tau_idx] ** 2)
+            factor = 0.5 if tau_idx in [3] else 1
+            factor = 0.1 if tau_idx in [9] else factor
+           #if tau_idx in [5,6,7,8]:
+           #    continue
+            j +=  factor / torque_weights[tau_idx] * (pas_tau[tau_idx] ** 2)
 
     if bounds_l_norm and "lm_optim" in params_to_optim:
         g = (ca.fabs(symbolics.muscles_len) /
@@ -149,7 +151,7 @@ def get_cost_to_map(scaling_factor, symbolics, weights,
             continue
         sqrt = 1 if tau_as_constraint else 2
         factor = 0.5 if t in [3] else 1
-        factor = 0.01 if t in [9] else factor
+        factor = 0.1 if t in [9] else factor
 
         j += factor * weights["tau_tracking"] * ((tau[t] * scaling_factor[2] - to_substract) ** sqrt)
     return j, g

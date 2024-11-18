@@ -8,20 +8,24 @@ from biosiglive import load
 from casadi import MX
 
 
-def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm=True, plot_length=True, color="b"):
+def check_muscle_sanity(model_path, q, q_dot, tau, plot_passive=True, plot_moment_arm=True, plot_length=True, color="b"):
     model = biorbd.Model(model_path)
+    import bioviz
+    b = bioviz.Viz(model_path)
+    b.load_movement(q)
+    b.exec()
     moment_arm = np.zeros((model.nbMuscles(), q.shape[0], q.shape[1]))
     length = np.zeros((model.nbMuscles(), q.shape[1]))
     velocity = np.zeros((model.nbMuscles(), q.shape[1]))
 
     length_ca = np.zeros((model.nbMuscles(), q.shape[1]))
 
-    mus_passive = np.zeros((model.nbMuscles(), q.shape[1]))
-    init_f_iso = MX.zeros(model.nbMuscles())
-    init_l_opt = MX.zeros(model.nbMuscles())
-    for m in range(model.nbMuscles()):
-        init_f_iso[m] = model.muscle(m).characteristics().forceIsoMax()
-        init_l_opt[m] = model.muscle(m).characteristics().optimalLength()
+    # mus_passive = np.zeros((model.nbMuscles(), q.shape[1]))
+    # init_f_iso = MX.zeros(model.nbMuscles())
+    # init_l_opt = MX.zeros(model.nbMuscles())
+    # for m in range(model.nbMuscles()):
+    #     init_f_iso[m] = model.muscle(m).characteristics().forceIsoMax()
+    #     init_l_opt[m] = model.muscle(m).characteristics().optimalLength()
 
     def len_fct(model, q):
         # model.UpdateKinematicsCustom(q)
@@ -43,48 +47,48 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
         return model.muscularJointTorque(muscles_force, q, qdot).to_mx()
 
     model_ca = biorbd_ca.Model(model_path)
-    q_sym = ca.MX.sym("q", model_ca.nbQ())
-    qdot_sym = ca.MX.sym("qdot", model_ca.nbQdot())
-    mus_act = ca.MX.sym("mus_act", model_ca.nbMuscles())
-    p_f_sym = ca.MX.sym("p_f_sym", model_ca.nbMuscles())
-    p_lm_sym = ca.MX.sym("p_lm_sym", model_ca.nbMuscles())
-    mjt = compute_tau_from_muscle(model_ca, q_sym, qdot_sym, mus_act, p_f_sym, p_lm_sym)
-    cas_fct = ca.Function("len_fct", [q_sym, qdot_sym, mus_act, p_f_sym, p_lm_sym], [mjt]).expand()
+    # q_sym = ca.MX.sym("q", model_ca.nbQ())
+    # qdot_sym = ca.MX.sym("qdot", model_ca.nbQdot())
+    # mus_act = ca.MX.sym("mus_act", model_ca.nbMuscles())
+    # p_f_sym = ca.MX.sym("p_f_sym", model_ca.nbMuscles())
+    # p_lm_sym = ca.MX.sym("p_lm_sym", model_ca.nbMuscles())
+    # mjt = compute_tau_from_muscle(model_ca, q_sym, qdot_sym, mus_act, p_f_sym, p_lm_sym)
+    # cas_fct = ca.Function("len_fct", [q_sym, qdot_sym, mus_act, p_f_sym, p_lm_sym], [mjt]).expand()
     # compute jacobian of cas_fct for each parameter using casadi
-    jac_fct_f = ca.jacobian(mjt, p_f_sym)
-    jac_fct_l = ca.jacobian(mjt, p_lm_sym)
-    jac_fct_f = ca.Function("jac_fct_f", [q_sym, qdot_sym, mus_act, p_f_sym, p_lm_sym], [jac_fct_f]).expand()
-    jac_fct_l = ca.Function("jac_fct_t", [q_sym, qdot_sym, mus_act, p_f_sym, p_lm_sym], [jac_fct_l]).expand()
+    # jac_fct_f = ca.jacobian(mjt, p_f_sym)
+    # jac_fct_l = ca.jacobian(mjt, p_lm_sym)
+    # jac_fct_f = ca.Function("jac_fct_f", [q_sym, qdot_sym, mus_act, p_f_sym, p_lm_sym], [jac_fct_f]).expand()
+    # jac_fct_l = ca.Function("jac_fct_t", [q_sym, qdot_sym, mus_act, p_f_sym, p_lm_sym], [jac_fct_l]).expand()
     # compute jacobian of cas_fct for each parameter using numerical method
-    jac_f_num = np.zeros((model_ca.nbGeneralizedTorque(), model_ca.nbMuscles(), q.shape[1]))
-    jac_l_num = np.zeros((model_ca.nbGeneralizedTorque(), model_ca.nbMuscles(), q.shape[1]))
-    for i in range(q.shape[1]):
-        for m in range(model_ca.nbMuscles()):
-            p_f_tmp = 1  #init_f_iso[m]
-            p_lm_tmp = 1  # init_l_opt[m]
-            jac_f_num[:, m:m + 1, i] = ca.Function("pouet", [MX()], [
-                jac_fct_f(MX(q[:, i]), MX(q_dot[:, i]), MX.ones(model_ca.nbMuscles()) * 0.3, p_f_tmp, p_lm_tmp)])()[
-                                           "o0"][:, m]
-            jac_l_num[:, m:m + 1, i] = ca.Function("pouet_l", [MX()], [
-                jac_fct_l(MX(q[:, i]), MX(q_dot[:, i]), MX.ones(model_ca.nbMuscles()) * 0.3, p_f_tmp, p_lm_tmp)])()[
-                                           "o0"][:, m]
+    # jac_f_num = np.zeros((model_ca.nbGeneralizedTorque(), model_ca.nbMuscles(), q.shape[1]))
+    # jac_l_num = np.zeros((model_ca.nbGeneralizedTorque(), model_ca.nbMuscles(), q.shape[1]))
+    # for i in range(q.shape[1]):
+    #     for m in range(model_ca.nbMuscles()):
+    #         p_f_tmp = 1  #init_f_iso[m]
+    #         p_lm_tmp = 1  # init_l_opt[m]
+    #         jac_f_num[:, m:m + 1, i] = ca.Function("pouet", [MX()], [
+    #             jac_fct_f(MX(q[:, i]), MX(q_dot[:, i]), MX.ones(model_ca.nbMuscles()) * 0.3, p_f_tmp, p_lm_tmp)])()[
+    #                                        "o0"][:, m]
+    #         jac_l_num[:, m:m + 1, i] = ca.Function("pouet_l", [MX()], [
+    #             jac_fct_l(MX(q[:, i]), MX(q_dot[:, i]), MX.ones(model_ca.nbMuscles()) * 0.3, p_f_tmp, p_lm_tmp)])()[
+    #                                        "o0"][:, m]
 
-    [name.to_string() for name in model.nameDof()]
-    colors = plt.cm.get_cmap("tab20", model.nbMuscles())
-    plt.figure("Jac f_")
-    for j in range(model.nbMuscles()):
-        plt.subplot(6, 7, j + 1)
-        for i in range(6, model.nbDof()):
-            plt.plot(jac_f_num[i, j, :], label=model.nameDof()[i].to_string())
-            plt.title(model.muscleNames()[j].to_string())
-    plt.legend([name.to_string() for name in model.nameDof()][6:])
-    plt.figure("Jac l_")
-    for j in range(model.nbMuscles()):
-        plt.subplot(6, 7, j + 1)
-        for i in range(6, model.nbDof()):
-            plt.plot(jac_l_num[i, j, :], label=model.nameDof()[i].to_string())
-            plt.title(model.muscleNames()[j].to_string())
-    plt.legend([name.to_string() for name in model.nameDof()][6:])
+    # [name.to_string() for name in model.nameDof()]
+    # colors = plt.cm.get_cmap("tab20", model.nbMuscles())
+    # # plt.figure("Jac f_")
+    # # for j in range(model.nbMuscles()):
+    # #     plt.subplot(6, 7, j + 1)
+    # #     for i in range(6, model.nbDof()):
+    # #         plt.plot(jac_f_num[i, j, :], label=model.nameDof()[i].to_string())
+    # #         plt.title(model.muscleNames()[j].to_string())
+    # plt.legend([name.to_string() for name in model.nameDof()][6:])
+    # plt.figure("Jac l_")
+    # for j in range(model.nbMuscles()):
+    #     plt.subplot(6, 7, j + 1)
+    #     for i in range(6, model.nbDof()):
+    #         plt.plot(jac_l_num[i, j, :], label=model.nameDof()[i].to_string())
+    #         plt.title(model.muscleNames()[j].to_string())
+    # plt.legend([name.to_string() for name in model.nameDof()][6:])
 
     #q = np.zeros_like(q)
     #q[4, :] = np.linspace(-5 *3.14/180, 17 *3.14/180, q.shape[1])
@@ -107,11 +111,11 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
     # plt.plot(q[4, :], passive_torque_num[4, :])
     #plt.show()
     #q[4, :] = np.linspace(-5, 17, q.shape[1])
-    model_ca = biorbd_ca.Model(model_path)
-
-    q_sym = ca.MX.sym("q", model_ca.nbQ())
-    ml = len_fct(model_ca, q_sym)
-    cas_fct = ca.Function("len_fct", [q_sym], [ml]).expand()
+    # model_ca = biorbd_ca.Model(model_path)
+    #
+    # q_sym = ca.MX.sym("q", model_ca.nbQ())
+    # ml = len_fct(model_ca, q_sym)
+    # cas_fct = ca.Function("len_fct", [q_sym], [ml]).expand()
     for i in range(model.nbMuscles()):
         f_iso = model.muscle(i).characteristics().forceIsoMax()
         l_optim = model.muscle(i).characteristics().optimalLength()
@@ -135,7 +139,7 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
             muscle_states[m].setActivation(0.1)
         #mus_torque[:, :, i] = model.muscularJointTorque(muscle_states, q[:, i], q_dot[:, i]).to_array()
         # length_ca[:, i] = cas_fct(ca.MX(q[:, i]))
-        length_ca[:, i] = ca.Function("pouet", [MX()], [cas_fct(ca.MX(q[:, i]))])()["o0"].toarray().squeeze()
+        # length_ca[:, i] = ca.Function("pouet", [MX()], [cas_fct(ca.MX(q[:, i]))])()["o0"].toarray().squeeze()
         for m in range(model.nbMuscles()):
             mus_tmp = biorbd.HillDeGrooteType(model.muscle(m))
             #model.UpdateKinematicsCustom(q[:, i])
@@ -150,7 +154,7 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
             mus_flce[m, i] = mus_tmp.FlCE(muscle_states[m]) * mus_tmp.characteristics().forceIsoMax()
             mus_fvce[m, i] = mus_tmp.FvCE() * mus_tmp.characteristics().forceIsoMax()
             mus_f_tot[m, i] = mus_tmp.characteristics().forceIsoMax() * (0.5 * mus_tmp.FlCE(muscle_states[m]) * mus_tmp.FvCE())
-            mus_passive[m, i] = mus_tmp.FlPE() * mus_tmp.characteristics().forceIsoMax()
+            # mus_passive[m, i] = mus_tmp.FlPE() * mus_tmp.characteristics().forceIsoMax()
     # for i in range(model.nbMuscles()):
     #     max_ma = np.max(moment_arm[i, ...])
     #     max_moment_arm = np.where(moment_arm[i, ...] == max_ma)[0]
@@ -162,13 +166,14 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
             continue
         else:
             param = optimize_parameters_init(length[m, :], model.muscle(m).characteristics().optimalLength())
+
     if plot_passive:
         plt.figure("passive_force")
         for i in range(model.nbMuscles()):
             plt.subplot(6, 7, i + 1)
-            plt.plot(mus_passive[i, :], color)
-            #plt.plot(mus_fvce[i, :], ".-", c=color)
-            #plt.plot(mus_flce[i, :], ".-", c=color)
+            # plt.plot(mus_passive[i, :], color)
+            plt.plot(mus_fvce[i, :], ".-", c=color)
+            plt.plot(mus_flce[i, :], ".-", c=color)
             plt.plot(np.repeat(model.muscle(i).characteristics().forceIsoMax(), q.shape[1]),"--", c=color)
 
             plt.title(model.muscleNames()[i].to_string())
@@ -186,16 +191,16 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
                 plt.plot(moment_arm[j, i, :], label=model.nameDof()[i].to_string())
                 plt.title(model.muscleNames()[j].to_string())
         plt.legend([name.to_string() for name in model.nameDof()])
-        plt.figure("torque")
-        for j in range(model.nbMuscles()):
-            plt.subplot(6, 7, j + 1)
-            for i in range(6, model.nbDof()):
-                plt.plot(moment_arm[j, i, :] * mus_passive[j, :], label=model.nameDof()[i].to_string())
-                #plt.plot(moment_arm[j, i, :] * mus_f_tot[j, :], ".-", label=model.nameDof()[i].to_string())
-
-                plt.title(model.muscleNames()[j].to_string())
-            plt.gca().set_prop_cycle(None)
-        plt.legend([name.to_string() for name in model.nameDof()][6:])
+        # plt.figure("torque")
+        # for j in range(model.nbMuscles()):
+        #     plt.subplot(6, 7, j + 1)
+        #     for i in range(6, model.nbDof()):
+        #         plt.plot(moment_arm[j, i, :] * mus_passive[j, :], label=model.nameDof()[i].to_string())
+        #         #plt.plot(moment_arm[j, i, :] * mus_f_tot[j, :], ".-", label=model.nameDof()[i].to_string())
+        #
+        #         plt.title(model.muscleNames()[j].to_string())
+        #     plt.gca().set_prop_cycle(None)
+        # plt.legend([name.to_string() for name in model.nameDof()][6:])
     if plot_length:
         plt.figure("velocity")
         max_vel = 5
@@ -222,6 +227,22 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
             plt.title(model.muscleNames()[i].to_string())
             # plt.ylim([0, 1])
         # plt.ylim([0, 1])
+
+    plt.figure("q")
+    max_vel = 5
+    for i in range(model.nbQ()):
+        plt.subplot(4, 3, i + 1)
+        plt.plot(q[i, :], color)
+    plt.figure("qdot")
+    max_vel = 5
+    for i in range(model.nbQ()):
+        plt.subplot(4, 3, i + 1)
+        plt.plot(q_dot[i, :], color)
+    plt.figure("tau")
+    max_vel = 5
+    for i in range(model.nbQ()):
+        plt.subplot(4, 3, i + 1)
+        plt.plot(tau[i, :], color)
     plt.show()
 
 
@@ -256,7 +277,7 @@ def optimize_parameters_init(all_length, param_value):
 
 
 if __name__ == '__main__':
-    participants = [f"P{i}" for i in range(10, 17)]
+    participants = [f"P{i}" for i in range(12, 17)]
     data_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/reference_data"
     model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
     files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20"])
@@ -264,5 +285,7 @@ if __name__ == '__main__':
     end_idx = 1000
     q = data["q_ocp"][..., :end_idx]
     q_dot = data["q_dot_ocp"][..., :end_idx]
-    model = model_dir + f"/P10/output_models/gear_20_model_scaled_dlc_ribs_new_seth_param.bioMod"
-    check_muscle_sanity(model, q, q_dot, plot_passive=True, plot_moment_arm=True, plot_length=True, color="r")
+    tau = data["tau_ocp"][..., :end_idx]
+
+    model = model_dir + f"/{part[0]}/output_models/gear_20_model_scaled_dlc_ribs_new_seth_param.bioMod"
+    check_muscle_sanity(model, q, q_dot,tau, plot_passive=True, plot_moment_arm=True, plot_length=True, color="r")

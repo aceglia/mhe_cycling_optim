@@ -15,6 +15,7 @@ import time
 
 class ParametersIdentifier:
     def __init__(self, params: list[Parameters]):
+        self.solving_time = None
         self.lm_optim_init = None
         self.model = None
         self.params_to_optim = [p.value for p in params]
@@ -235,7 +236,7 @@ class ParametersIdentifier:
 
         obj_1, g = self._compute_mapped_cost_function(model_param_init, use_sx=use_sx)
         self.g = g
-        self.g = None
+        #self.g = None
         obj_2 = self._compute_non_mapped_cost_function(model_param_init, self.l_norm_bounded, use_sx=use_sx)
         total_obj = obj_1 + obj_2
 
@@ -366,7 +367,7 @@ class ParametersIdentifier:
                                    self.symbolics.x_all, self.symbolics.pas_tau_all, self.symbolics.muscle_torque_all, x0, tau_0, self.with_param,
                                    self.with_torque,
                                    self.p_init, self.params_to_optim, self.p_mapping, self.param_bounds,
-                                   self.l_norm_bounded, self.g, tau_bounds=10,
+                                   self.l_norm_bounded, self.g, tau_bounds=20,
                                    )
         if self.torque_as_constraint or self.g is not None:
             nlp = {"x": bounds_dic["x"], "f": self.total_obj, "g": self.g}
@@ -377,6 +378,8 @@ class ParametersIdentifier:
             nlp = {"x": bounds_dic["x"], "f": self.total_obj}
             sol_nlp = nlpsol("sol", "ipopt", nlp, opts)
             solution = sol_nlp(x0=bounds_dic["x0"], lbx=bounds_dic["lbx"], ubx=bounds_dic["ubx"])
+        self.solving_time = time.time() - self.tic
+        print("Time to build and solve: ", self.solving_time)
         return self._dispatch_results(solution, sol_nlp, save_results, output_file, plot)
 
     def _dispatch_results(self, solution, sol_nlp, save_results, output_file, plot):
@@ -410,7 +413,7 @@ class ParametersIdentifier:
     def _save_results(self, act, pas_tau, p, solver_out, save_path):
         save({"a": act, "pas_tau": pas_tau, "p": p, "emg": self.emg, "q": self.q, "qdot": self.q_dot,
               "scaling_factor": self.scaling_factor,
-              "p_mapping": self.p_mapping, "p_init": self.p_init, "solving_time": time.time() - self.tic,
+              "p_mapping": self.p_mapping, "p_init": self.p_init, "solving_time": self.solving_time,
               "optimized_params": self.params_to_optim,
               "tracked_torque": self.tau, "muscle_track_idx": self.muscle_track_idx,
               "param_bounds": self.param_bounds, "solver_out": solver_out, "cycle_number": self.cycle_number
