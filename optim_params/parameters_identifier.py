@@ -88,8 +88,8 @@ class ParametersIdentifier:
 
         sym_list = self.symbolics.get(symbolics_to_get)
         J_func = Function("J1", sym_list, [j]).expand()
-        g = self.symbolics.pas_tau[5:9]
-        g_func = Function("g1", self.symbolics.get(["pas_tau"]), [g]).expand()
+        # g = self.symbolics.pas_tau[5:9]
+        # g_func = Function("g1", self.symbolics.get(["pas_tau"]), [g]).expand()
 
         if self.add_muscle_torque_constraint:
             self.symbolics.add("muscle_tau_from_act", self.model.nbQ())
@@ -124,7 +124,7 @@ class ParametersIdentifier:
                                          tau_tmp,
                                          tau_muscle_tmp)
                 obj_1 = vertcat(obj_1, obj_tmp)
-                g_1 = vertcat(g_1, g_func(tau_tmp))
+                # g_1 = vertcat(g_1, g_func(tau_tmp))
                 if self.add_muscle_torque_constraint:
                     mus_tau_from_act = _get_muscle_torque(x_split[:, i], self.mx_variables.get("q")[:, i],
                                     self.mx_variables.get("qdot")[:, i], self.symbolics.p_all, self.p_mapping, self.ca_funct,
@@ -236,7 +236,7 @@ class ParametersIdentifier:
 
         obj_1, g = self._compute_mapped_cost_function(model_param_init, use_sx=use_sx)
         self.g = g
-        #self.g = None
+        self.g = None
         obj_2 = self._compute_non_mapped_cost_function(model_param_init, self.l_norm_bounded, use_sx=use_sx)
         total_obj = obj_1 + obj_2
 

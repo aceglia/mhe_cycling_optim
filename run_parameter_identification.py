@@ -9,12 +9,12 @@ import biorbd
 import numpy as np
 
 
-weights = {"tau_tracking": 10,
-           "activation_tracking": 100,
+weights = {"tau_tracking": 1000,
+           "activation_tracking": 1000,
            "min_act": 1,
-           "min_f_iso": 20,
-           "min_lm_optim": 80,
-           "min_pas_torque": 10
+           "min_f_iso": 0.005,
+           "min_lm_optim": 800,
+           "min_pas_torque": 50000
            }
 
 emg_names_init = ["PectoralisMajorThorax",
@@ -52,12 +52,16 @@ def update_data(initial_data, random_idx_list):
     plt.figure("q")
     for i in range(q_final.shape[0]):
         plt.subplot(q_final.shape[0]//3+1, 3, i+1)
-        for j in range(q.shape[0]):
-            plt.plot(q[j, i, :])
+        plt.plot(q_final[i, :])
     plt.figure("qdot")
     for i in range(qdot_final.shape[0]):
         plt.subplot(qdot_final.shape[0]//3+1, 3, i+1)
-        plt.plot(qdot[0, i, :])
+        plt.plot(qdot_final[i, :])
+    plt.figure("tau")
+    for i in range(tau_final.shape[0]):
+        plt.subplot(tau_final.shape[0]//3+1, 3, i+1)
+        plt.plot(tau_final[i, :])
+    # plt.show()
     dict_data = {"q": q_final, "qdot": qdot_final, "tau": tau_final, "f_ext": f_ext_final, "emg": emg_final}
     return dict_data
 
@@ -72,7 +76,7 @@ def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_
             param_bounds[p_idx] = [0.5, 3]
         elif param == "lm_optim":
             all_muscle_len = get_all_muscle_len(eigen_model, q)
-            param_bounds[p_idx] = [0.5, 2]
+            param_bounds[p_idx] = [0.5, 1.2]
         elif param == "lt_slack":
             param_bounds[p_idx] = [0.8, 1.2]
         else:
@@ -89,16 +93,27 @@ def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_
 
 if __name__ == '__main__':
     with_param = True
-    with_residual_torque = True
+    with_residual_torque = False
     use_ratio_tracking = True
     save_data = False
-    participants = [f"P{i}" for i in range(10, 17)]
+    participants = [f"P{i}" for i in range(14, 17)]
     params_to_optimize = [Parameters.f_iso, Parameters.lm_optim]
     data_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/reference_data"
     model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
 
 
-    files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20"])
+    files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20_mvc.bio"])
+    # files_bis, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20.bio"])
+    # from biosiglive import load
+    # old = load(files_bis[0])
+    # new = load(files[0])
+    # import matplotlib.pyplot as plt
+    # for i in range(old["emg"].shape[0]):
+    #     plt.subplot(old["emg"].shape[0]//3+1, 3, i+1)
+    #     plt.plot(old["emg"][i, :])
+    #     plt.plot(new["emg"][i, :])
+    # plt.show()
+
     n_cycles = [3, 1,2,3,4,5]
     batch_size = 3
     date = time.strftime("%Y-%m-%d_%H-%M")
@@ -130,10 +145,10 @@ if __name__ == '__main__':
                     params_to_optimize, model_path,
                                               identifier.q, use_p_mapping=False)
                 identifier.initialize_problem(model_path, p_mapping_list, with_residual_torques=with_residual_torque,
-                                               threads=1, weights=weights, scaling_factor=(1, (0.01, 0.001), 1), emg_names=emg_names,
+                                               threads=1, weights=weights, scaling_factor=(1, (30, 0.1), 1), emg_names=emg_names,
                                               all_muscle_len=all_muscle_len, l_norm_bounded=False, p_init=None,
                                               param_bounds=param_bounds, use_sx=True, add_muscle_torque_constraint=False)
-                identifier.solve(save_results=save_data, output_file=output_file, max_iter=3000,
+                identifier.solve(save_results=save_data, output_file=output_file, max_iter=5000,
                                  hessian_approximation="exact",
                                  linear_solver="ma57",
                                  #obj_scaling_factor=0.0001,

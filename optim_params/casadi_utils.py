@@ -23,6 +23,9 @@ class Symbolics:
         self.emg = None
         self.x = None
         self.p = None
+        self.pas_tau = None
+        self.pas_tau_all = None
+
 
     def get(self, name):
         name = [name] if not isinstance(name, list) else name

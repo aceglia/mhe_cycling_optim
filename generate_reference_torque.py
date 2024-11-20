@@ -22,7 +22,7 @@ if __name__ == '__main__':
     data_rate = 120
     final_time = 0.12
     n_shooting = int(final_time * data_rate)
-    participants = [f"P{i}" for i in range(10, 11)]
+    participants = [f"P{i}" for i in range(12, 13)]
     data_dir = "/mnt/shared/Projet_hand_bike_markerless/RGBD"
     trials = ["gear_20"] # ["gear_5", "gear_10", "gear_15", "gear_20"]
     # model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial_short}_model_scaled_{source[:-2]}_ribs_new_seth_param.bioMod"
@@ -36,7 +36,7 @@ if __name__ == '__main__':
         output_path = prefix + f"/Projet_hand_bike_markerless/optim_params/reference_data/{participant}" + f"/reference_torque_{trial_short}_mvc.bio"
         torque_estimator = TorqueEstimator()
         torque_estimator.init_experimental_data(get_experimental_data(file_path, source="dlc_1", downsample=1, n_stop=None))
-        biorbd_model_path = (f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{participant}/models/{trial_short}_model_scaled_dlc_ribs_new_seth_param.bioMod")
+        biorbd_model_path = (f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{participant}/output_models/{trial_short}_model_scaled_dlc_ribs_new_seth_param.bioMod")
         torque_estimator.init_ocp(biorbd_model_path,
                                   final_time,
                                   n_shooting,
