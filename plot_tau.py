@@ -394,12 +394,13 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
             elif key == "tau":
                 if color == "g":
                     key_tmp = ["tau", "tau_est", "mus_tau"]
-                    color_tmp = ["r", color, color]
+                    key_tmp = ["tau_est"]
+                    color_tmp = [color, "r", color, color]
                     line_style = ["-", "--", "-"]
                 else:
-                    key_tmp = ["tau_est", "mus_tau"]
+                    key_tmp = ["tau_est"]#, "mus_tau"]
                     color_tmp =  [color, color]
-                    line_style = ["--", "-"]
+                    line_style = ["-", "-"]
             elif (key == "q_est" or key=="dq_est") and compare_to_fd:
                 first_key = "q_ref" if key == "q_est" else "q_dot_ref"
                 key_tmp = [first_key, key]
@@ -425,7 +426,7 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
                     plt.plot(t, np.mean(dic_merged["cycles"][j], axis=0)[i, :], color=color_tmp[idx_j], alpha=0.7, ls=line_style[idx_j])
                     plt.margins(x=0)
                 plt.title(init_segments[i] + " - " + init_joints_names[i], fontsize=20)
-                plt.yticks(ticks=plt.yticks()[0], labels=plt.yticks()[0].astype(int))
+                # plt.yticks(ticks=plt.yticks()[0], labels=np.round(plt.yticks()[0], 2))
                 if i % 3 == 0:
                     plt.ylabel(metrics[0], fontsize=15)
 
@@ -445,7 +446,7 @@ if __name__ == '__main__':
     participants = ["P10"] #, "P11", "P13", "P14"]
     trials = ["gear_15"]
     cycle = 5
-    result_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/results"
+    result_dir = ("/mnt/shared/Projet_hand_bike_markerless/optim_params/results_first_version")
     for trial in trials:
         suffix = "test_quad"
         parameters_file_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{cycle}_{suffix}.bio"
@@ -463,11 +464,11 @@ if __name__ == '__main__':
         # plt.show()
         if part != "P16":
             data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_True_fd_{cycle}_half_{suffix}.bio"
-            plot_cycles(model, data_path, optim_param_path=parameters_file_path, color = "g", mhe_file=mhe_file, compare_to_fd=True)
+            plot_cycles(model, data_path, optim_param_path=parameters_file_path, color = "g", mhe_file=mhe_file, compare_to_fd=False)
 
             #plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style="--", color = "k", model_path=model)
         # plt.show()
         if part != "P16":
             data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_False_1_half_{suffix}.bio"
-            plot_cycles(model, data_path, optim_param_path=None, color="b", mhe_file=mhe_file, compare_to_fd=True)
+            plot_cycles(model, data_path, optim_param_path=None, color="b", mhe_file=mhe_file, compare_to_fd=False)
     plt.show()

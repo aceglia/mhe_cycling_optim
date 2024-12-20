@@ -19,6 +19,48 @@ def plot_muscle_activation(muscle_activations, emg=None, muscle_names=None, musc
         plt.xlabel('Time (s)')
         plt.ylabel('Muscle activation')
 
+def plot_muscle_force(model, muscle_activations, q, q_dot, muscle_names=None):
+    """
+    Plots the muscle activations over time.
+    Parameters
+    ----------
+    """
+    import biorbd
+    mus_fvce = np.zeros((model.nbMuscles(), q.shape[1]))
+    mus_flce = np.zeros((model.nbMuscles(), q.shape[1]))
+    mus_flpe = np.zeros((model.nbMuscles(), q.shape[1]))
+    mus_fce = np.zeros((model.nbMuscles(), q.shape[1]))
+    for i in range(q.shape[1]):
+        muscle_states = model.stateSet()
+        for m in range(model.nbMuscles()):
+            model.UpdateKinematicsCustom(q[:, i])
+            # model.updateMuscles(q[:, i], True)
+            mus_tmp = biorbd.HillDeGrooteType(model.muscle(m))
+            muscle_states[m].setActivation(muscle_activations[m, i])
+            # mus_tmp.characteristics().setMaxShorteningSpeed(500)
+            # mus_tmp = model.muscle(m)
+            mus_tmp.length(model, q[:, i])
+            mus_tmp.velocity(model, q[:, i], q_dot[:, i], True)
+            mus_tmp.computeFlPE()
+            mus_tmp.computeFlCE(muscle_states[m])
+            mus_tmp.computeFvCE()
+            mus_flce[m, i] = mus_tmp.FlCE(muscle_states[m]) * mus_tmp.characteristics().forceIsoMax()
+            mus_fce[m, i] = (muscle_activations[m, i] * mus_tmp.FlCE(muscle_states[m]) * mus_tmp.FvCE()) * mus_tmp.characteristics().forceIsoMax()
+            mus_fvce[m, i] = mus_tmp.FvCE() * mus_tmp.characteristics().forceIsoMax()
+            mus_flpe[m, i] = mus_tmp.FlPE() * mus_tmp.characteristics().forceIsoMax()
+
+    plt.figure(f"Muscle forces")
+    if muscle_names is None:
+        muscle_names = ['Muscle' + str(i) for i in range(len(muscle_activations))]
+    for m in range(len(muscle_names)):
+        plt.subplot(int(np.ceil(muscle_activations.shape[0] / 4)), 4, m + 1)
+        # plt.plot(mus_flce[m, :], color="b")
+        plt.plot(mus_fce[m, :], color="g")
+        plt.plot(mus_flpe[m, :], color="r")
+        plt.title(muscle_names[m])
+        plt.xlabel('Time (s)')
+        plt.ylabel('Muscle activation')
+
 def plot_joint_torques(muscle_torques, reference_torques, residuals_torques=None, muscle_torque_optim=None, joint_names=None):
     plt.figure(f"Joint torques")
     if residuals_torques is None:
@@ -59,3 +101,16 @@ def plot_param(param, muscle_names=None, param_name=None, bounds=None, initial_v
         plt.axhline(y=bounds[p][0] - 1, color='black', linestyle='--')
         # Labels and title
         plt.ylabel('Deviation from initial value')
+
+def plot_norm_length(model, q):
+    length = np.zeros((model.nbMuscles(), q.shape[1]))
+    for i in range(q.shape[1]):
+        for m in range(model.nbMuscles()):
+            model.UpdateKinematicsCustom(q[:, i])
+            model.updateMuscles(q[:, i], True)
+            length[m, i] = model.muscle(m).length(model, q[:, i])
+    plt.figure("norm_length")
+    for i in range(model.nbMuscles()):
+        plt.subplot(6, 7, i + 1)
+        plt.plot(length[i, :] / model.muscle(i).characteristics().optimalLength())
+        plt.title(model.muscleNames()[i].to_string())

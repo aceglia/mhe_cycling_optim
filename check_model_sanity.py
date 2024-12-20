@@ -10,10 +10,10 @@ from casadi import MX
 
 def check_muscle_sanity(model_path, q, q_dot, tau, plot_passive=True, plot_moment_arm=True, plot_length=True, color="b"):
     model = biorbd.Model(model_path)
-    import bioviz
-    b = bioviz.Viz(model_path)
-    b.load_movement(q)
-    b.exec()
+    # import bioviz
+    # b = bioviz.Viz(model_path)
+    # b.load_movement(q)
+    # b.exec()
     moment_arm = np.zeros((model.nbMuscles(), q.shape[0], q.shape[1]))
     length = np.zeros((model.nbMuscles(), q.shape[1]))
     velocity = np.zeros((model.nbMuscles(), q.shape[1]))
@@ -119,8 +119,14 @@ def check_muscle_sanity(model_path, q, q_dot, tau, plot_passive=True, plot_momen
     for i in range(model.nbMuscles()):
         f_iso = model.muscle(i).characteristics().forceIsoMax()
         l_optim = model.muscle(i).characteristics().optimalLength()
-        model.muscle(i).characteristics().setOptimalLength(l_optim)
         l_slack = model.muscle(i).characteristics().tendonSlackLength()
+        ratio = l_slack / l_optim
+        coef = 1
+        coef_iso = 1
+        l_slack = (l_optim * coef ) * ratio
+        l_optim = l_optim * coef
+        model.muscle(i).characteristics().setOptimalLength(l_optim)
+        model.muscle(i).characteristics().setForceIsoMax(f_iso * coef_iso)
         model.muscle(i).characteristics().setTendonSlackLength(l_slack)
 
         print(f"ratio for muscle {model.muscleNames()[i].to_string()}", l_slack / l_optim)
@@ -130,6 +136,8 @@ def check_muscle_sanity(model_path, q, q_dot, tau, plot_passive=True, plot_momen
     mus_fvce = np.zeros((model.nbMuscles(), q.shape[1]))
     mus_flce = np.zeros((model.nbMuscles(), q.shape[1]))
     mus_f_tot = np.zeros((model.nbMuscles(), q.shape[1]))
+    mus_flpe = np.zeros((model.nbMuscles(), q.shape[1]))
+
     mus_torque = np.zeros((model.nbGeneralizedTorque(), model.nbMuscles(), q.shape[1]))
     for i in range(q.shape[1]):
         passive_torque[:, i] = model.passiveJointTorque(q[:, i], np.zeros_like(q[:, i])).to_array()
@@ -142,8 +150,9 @@ def check_muscle_sanity(model_path, q, q_dot, tau, plot_passive=True, plot_momen
         # length_ca[:, i] = ca.Function("pouet", [MX()], [cas_fct(ca.MX(q[:, i]))])()["o0"].toarray().squeeze()
         for m in range(model.nbMuscles()):
             mus_tmp = biorbd.HillDeGrooteType(model.muscle(m))
-            #model.UpdateKinematicsCustom(q[:, i])
-            #model.updateMuscles(q[:, i], True)
+            model.UpdateKinematicsCustom(q[:, i])
+            model.updateMuscles(q[:, i], True)
+            # mus_tmp.characteristics().setMaxShorteningSpeed(5)
             length[m, i] = model.muscle(m).length(model, q[:, i])  #
             velocity[m, i] = model.muscle(m).velocity(model, q[:, i], q_dot[:, i])
             mus_tmp.length(model, q[:, i])
@@ -151,10 +160,10 @@ def check_muscle_sanity(model_path, q, q_dot, tau, plot_passive=True, plot_momen
             mus_tmp.computeFlPE()
             mus_tmp.computeFlCE(muscle_states[m])
             mus_tmp.computeFvCE()
-            mus_flce[m, i] = mus_tmp.FlCE(muscle_states[m]) * mus_tmp.characteristics().forceIsoMax()
-            mus_fvce[m, i] = mus_tmp.FvCE() * mus_tmp.characteristics().forceIsoMax()
-            mus_f_tot[m, i] = mus_tmp.characteristics().forceIsoMax() * (0.5 * mus_tmp.FlCE(muscle_states[m]) * mus_tmp.FvCE())
-            # mus_passive[m, i] = mus_tmp.FlPE() * mus_tmp.characteristics().forceIsoMax()
+            mus_flce[m, i] = 0.2 *  mus_tmp.FlCE(muscle_states[m]) * mus_tmp.characteristics().forceIsoMax()
+            mus_fvce[m, i] = 0.2 * mus_tmp.FvCE() * mus_tmp.characteristics().forceIsoMax()
+            mus_f_tot[m, i] = mus_tmp.characteristics().forceIsoMax() * (0.2 * mus_tmp.FlCE(muscle_states[m]) * mus_tmp.FvCE())
+            mus_flpe[m, i] = mus_tmp.FlPE() * mus_tmp.characteristics().forceIsoMax()
     # for i in range(model.nbMuscles()):
     #     max_ma = np.max(moment_arm[i, ...])
     #     max_moment_arm = np.where(moment_arm[i, ...] == max_ma)[0]
@@ -171,10 +180,13 @@ def check_muscle_sanity(model_path, q, q_dot, tau, plot_passive=True, plot_momen
         plt.figure("passive_force")
         for i in range(model.nbMuscles()):
             plt.subplot(6, 7, i + 1)
-            # plt.plot(mus_passive[i, :], color)
-            plt.plot(mus_fvce[i, :], ".-", c=color)
-            plt.plot(mus_flce[i, :], ".-", c=color)
-            plt.plot(np.repeat(model.muscle(i).characteristics().forceIsoMax(), q.shape[1]),"--", c=color)
+            # plt.plot(mus_flpe[i, :], "-", c=color)
+            # plt.plot(mus_fvce[i, :], "--", c=color)
+            # plt.plot(mus_flce[i, :], "--", c=color)
+            plt.plot(mus_flpe[i, :], "-", c="r")
+            plt.plot(mus_fvce[i, :], "--", c="b")
+            plt.plot(mus_flce[i, :], "--", c="g")
+            # plt.plot(np.repeat(model.muscle(i).characteristics().forceIsoMax(), q.shape[1]),"--", c=color)
 
             plt.title(model.muscleNames()[i].to_string())
     if plot_moment_arm:
@@ -190,7 +202,13 @@ def check_muscle_sanity(model_path, q, q_dot, tau, plot_passive=True, plot_momen
             for i in range(0, model.nbDof()):
                 plt.plot(moment_arm[j, i, :], label=model.nameDof()[i].to_string())
                 plt.title(model.muscleNames()[j].to_string())
-        plt.legend([name.to_string() for name in model.nameDof()])
+        plt.figure("moment_arm_3")
+        for j in range(model.nbMuscles()):
+            plt.subplot(6, 7, j + 1)
+            for i in range(3, 4):
+                plt.plot(moment_arm[j, i, :], label=model.nameDof()[i].to_string())
+                plt.title(model.muscleNames()[j].to_string())
+        # plt.legend([name.to_string() for name in model.nameDof()])
         # plt.figure("torque")
         # for j in range(model.nbMuscles()):
         #     plt.subplot(6, 7, j + 1)
@@ -278,14 +296,15 @@ def optimize_parameters_init(all_length, param_value):
 
 if __name__ == '__main__':
     import os
-    participants = [f"P{i}" for i in range(12, 17)]
+    participants = [f"P{i}" for i in range(10, 17)]
     prefix = "/mnt/shared/" if os.name == 'posix' else r"Q:/"
     data_dir = f"{prefix}Projet_hand_bike_markerless/optim_params/reference_data"
     model_dir = f"{prefix}Projet_hand_bike_markerless/RGBD/"
-    files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20"])
+    files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20_mvc"])
     data = load(files[0])
     end_idx = 1000
     q = data["q_ocp"][..., :end_idx]
     q_dot = data["q_dot_ocp"][..., :end_idx]
+    tau = data["tau_ocp"][..., :end_idx]
     model = model_dir + f"/{part[0]}/output_models/gear_20_model_scaled_dlc_ribs_new_seth_param.bioMod"
-    check_muscle_sanity(model, q, q_dot, plot_passive=True, plot_moment_arm=True, plot_length=True, color="r")
+    check_muscle_sanity(model, q, q_dot,tau,  plot_passive=True, plot_moment_arm=True, plot_length=True, color="r")
