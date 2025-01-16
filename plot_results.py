@@ -323,7 +323,7 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
             data_mhe = process_cycles(data_mhe_tmp, peaks, key_for_size="q")
         else:
             raise RuntimeError("No mhe file provided")
-    key_to_export = ["q_est", "dq_est", "u_est", "tau_est", "muscles_target", "f_ext", "muscle_force"]
+    key_to_export = ["q_est", "dq_est", "u_est", "tau_est", "muscles_target", "f_ext", "muscle_force", "kin_target"]
     dic_merged = {}
     for key in data[0].keys():
         if key in key_to_export:
@@ -334,11 +334,16 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
     u_est = dic_merged["u_est"]
     dic_merged["mus_tau"] = get_muscular_torque(np.concatenate((q_est, dq_est), axis=0),
                                   u_est, bio_model, parameters_file_path=optim_param_path) + dic_merged["tau_est"]
-    dic_merged["tau"] = get_id_torque(q_est, dq_est, bio_model, dic_merged["f_ext"], rate=60)
+    # dic_merged["tau"] = get_id_torque(q_est, dq_est, bio_model, dic_merged["f_ext"], rate=60)
 
-    key_to_export.append("mus_tau")
-    key_to_export.append("tau")
-
+    #
+    # key_to_export.append("mus_tau")
+    # key_to_export.append("tau")
+    # import bioviz
+    # b = bioviz.Viz(model_path=model)
+    # b.load_movement(q_est)
+    # # b.load_experimental_markers(dic_merged["kin_target"])
+    # b.exec()
     if cycles:
         peaks = find_peaks(q_est[-2, :])[0]
         # plt.figure("peaks")
@@ -347,7 +352,7 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
         # plt.show()
         dic_merged = process_cycles(dic_merged, peaks)
     key_to_export.pop(key_to_export.index("muscles_target"))
-    key_to_export.pop(key_to_export.index("tau"))
+    # key_to_export.pop(key_to_export.index("tau"))
     if compare_to_fd:
         dic_merged["tau"] = data_mhe["tau"]
         dic_merged["cycles"]["tau"] = data_mhe["cycles"]["tau"]
@@ -366,7 +371,7 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
                   'DeltoideusScapula_P']
     if "P11" in parameters_file_path:
         emg_names.pop(emg_names.index("LatissimusDorsi"))
-    key_to_export.append("tau")
+    # key_to_export.append("tau")
     from math import ceil
     track_idx = get_tracking_idx(bio_model, emg_names)
     for key in key_to_export:
@@ -377,15 +382,15 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
         line_style = "-"
         for i in range(n_key):
             plt.subplot(ceil(n_key / 3), 3, i +1)
-            if key in ["u_est", "mus_tau"]:
-                key_tmp = ["tau", key] if key != "u_est" else ["muscles_target", key]
-                color_tmp = [color] if len(key_tmp) == 1 else ["r", color]
-                line_style = ["-", "-"]
-            elif key == "tau":
-                key_tmp = ["tau", "tau_est", "mus_tau"]
-                color_tmp = [color] if len(key_tmp) == 1 else ["r", color, color]
-                line_style = ["-", "--", "-"]
-            elif (key == "q_est" or key=="dq_est") and compare_to_fd:
+            # if key in ["u_est", "mus_tau"]:
+            #     key_tmp = ["tau", key] if key != "u_est" else ["muscles_target", key]
+            #     color_tmp = [color] if len(key_tmp) == 1 else ["r", color]
+            #     line_style = ["-", "-"]
+            # elif key == "tau":
+            #     key_tmp = ["tau", "tau_est", "mus_tau"]
+            #     color_tmp = [color] if len(key_tmp) == 1 else ["r", color, color]
+            #     line_style = ["-", "--", "-"]
+            if (key == "q_est" or key=="dq_est") and compare_to_fd:
                 first_key = "q_ref" if key == "q_est" else "q_dot_ref"
                 key_tmp = [first_key, key]
                 color_tmp = [color] if len(key_tmp) == 1 else ["r", color]
@@ -414,9 +419,9 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
                     plt.title(bio_model.muscleNames()[i].to_string())
 
 if __name__ == '__main__':
-    part = "P11"
+    part = "P10"
     participants = ["P10"] #, "P11", "P13", "P14"]
-    trials = ["gear_15"]
+    trials = ["gear_20"]
     cycle = 5
     result_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/results"
     for trial in trials:
@@ -425,22 +430,23 @@ if __name__ == '__main__':
         # model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial}_model_scaled_dlc_ribs_new_seth_param_params_id_{cycle}.bioMod"
         # data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_True_id_{cycle}_full.bio"
         # plot_all_window(data_path, n_windows=None, plot_by_windows=False, model_path=model)
-        model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial}_model_scaled_dlc_ribs_new_seth_param.bioMod"
+        model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/output_models/{trial}_model_scaled_dlc_technical_marker_params.bioMod"
 
             #plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style="--", color = "g", model_path=model)
         #model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial}_model_scaled_dlc_ribs_new_seth_param_params_fd_{cycle}.bioMod"
         file_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}"
         all_dir = os.listdir(file_dir)
         trial_dir = [dir for dir in all_dir if trial in dir and "result" not in dir][0]
-        mhe_file = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/{trial_dir}/result_mhe_torque_driven_{trial}_comparison.bio"
+        # mhe_file = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/{trial_dir}/result_mhe_torque_driven_{trial}_comparison.bio"
         # plt.show()
-        if part != "P16":
-            data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_True_fd_{cycle}_half_{suffix}.bio"
-            plot_cycles(model, data_path, optim_param_path=parameters_file_path, color = "g", mhe_file=mhe_file, compare_to_fd=True)
+        mhe_file = None
+        # if part != "P16":
+            # data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_True_fd_{cycle}_half_{suffix}.bio"
+            # plot_cycles(model, data_path, optim_param_path=parameters_file_path, color = "g", mhe_file=mhe_file, compare_to_fd=True)
 
             #plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style="--", color = "k", model_path=model)
         # plt.show()
         if part != "P16":
-            data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_False_1_half_{suffix}.bio"
-            plot_cycles(model, data_path, optim_param_path=None, color="b", mhe_file=mhe_file, compare_to_fd=True)
+            data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_False_track_q.bio"
+            plot_cycles(model, data_path, optim_param_path=None, color="b", mhe_file=mhe_file, compare_to_fd=False, cycles=False)
     plt.show()

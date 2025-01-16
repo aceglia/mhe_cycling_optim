@@ -263,7 +263,6 @@ class ParametersIdentifier:
                                                       params_to_optim=self.params_to_optim,
                                                       model_params_init=model_param_init,
                                                       ratio=ratio_init)
-
         obj_1, g = self._compute_mapped_cost_function(model_param_init, use_sx=use_sx)
         self.g = g
         # self.g = None
@@ -467,7 +466,7 @@ class ParametersIdentifier:
                    self.param_bounds, 1)
         plot_joint_torques(mjt, self.tau, pas_tau_mat, muscle_torque)
         plot_muscle_activation(act, self.emg, [name.to_string() for name in eigen_model.muscleNames()],
-                               self.muscle_track_idx)
+                               self.muscle_track_idx, self.q)
         plot_muscle_force(eigen_model, act, self.q, self.q_dot, [name.to_string() for name in eigen_model.muscleNames()],
                                )
 

@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-def plot_muscle_activation(muscle_activations, emg=None, muscle_names=None, muscle_track_idx=None):
+def plot_muscle_activation(muscle_activations, emg=None, muscle_names=None, muscle_track_idx=None, q=None):
     """
     Plots the muscle activations over time.
     Parameters
@@ -12,9 +12,10 @@ def plot_muscle_activation(muscle_activations, emg=None, muscle_names=None, musc
         muscle_names = ['Muscle'+ str(i) for i in range(len(muscle_activations))]
     for i, act in enumerate(muscle_activations):
         plt.subplot(int(np.ceil(muscle_activations.shape[0]/4)), 4, i+1)
-        plt.plot(act)
+        plt.plot(act, color="b")
         if emg is not None and i in muscle_track_idx:
             plt.plot(emg[muscle_track_idx.index(i), :], color="r")
+        plt.plot(q[-2, :] / 10, color="g")
         plt.title(muscle_names[i])
         plt.xlabel('Time (s)')
         plt.ylabel('Muscle activation')

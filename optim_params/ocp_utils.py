@@ -100,11 +100,20 @@ def get_objectives(weigths, nb_q, nb_markers, n_shooting, with_f_ext=False, trac
                                 target=q_init[nb_q: nb_q * 2, :n_shooting + 1],
                                 node=Node.ALL, multi_thread=False)
 
-    if nb_q > 10:
-        objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=1000, multi_thread=False,
-                                index=list(range(4, 5)), quadratic=False)
+    #if nb_q > 10:
+        #objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=1000, multi_thread=False,
+        #                        index=list(range(4, 5)), quadratic=False)
     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot", weight=1000, multi_thread=False,
                             index=list(range(9, 10)), quadratic=True, derivative=False)
+    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot", weight=weigths["qdot"] / 100,
+                            multi_thread=False,
+                            index=list(range(0, abs(10 - nb_q))), derivative=False)
+
+    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=weigths["tau"] / 100,
+                            multi_thread=False,
+                            index=list(range(0, abs(10 - nb_q))))
+    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=weigths["q"] / 100, multi_thread=False,
+                            index=list(range(0, abs(10 - nb_q))))
 
     return objective_functions
 
@@ -193,10 +202,10 @@ def get_solver_options(solver):
         sol_dict["solver"].set_convergence_tolerance(1e-4)
         from copy import copy
         sol_dict["solver"] = copy(sol_dict["solver"])
-        sol_dict["solver"].set_print_level(1)
+        sol_dict["solver"].set_print_level(0)
         sol_dict["solver"].set_qp_solver("PARTIAL_CONDENSING_HPIPM")  # PARTIAL_CONDENSING_OSQP PARTIAL_CONDENSING_HPIPM
         sol_dict["solver"].set_integrator_type("IRK")
-        #sol_dict["solver"].set_nlp_solver_type("SQP_RTI")
+        sol_dict["solver"].set_nlp_solver_type("SQP_RTI")
         sol_dict["solver"].set_maximum_iterations(1000)
         sol_dict["solver"].set_convergence_tolerance(1e-4)
 
@@ -215,6 +224,7 @@ def get_solver_options(solver):
     else:
         raise NotImplementedError("Solver not recognized")
     return sol_dict
+
 
 def get_update_function(markers_init, f_ext, with_f_ext, track_previous, kin_init, n_shooting, model, ocp, save_data):
     def update_functions(mhe, t, _):
@@ -246,10 +256,13 @@ def get_update_function(markers_init, f_ext, with_f_ext, track_previous, kin_ini
                     "qdot"] if ocp.sol is not None else kin_init[model.nb_q:, t:t + n_shooting + 1]
                 mhe.update_objectives_target(target=q_to_track, list_index=5)
                 mhe.update_objectives_target(target=qdot_to_track, list_index=6)
-        if ocp.sol is not None and ocp.sol.status !=0:
+        if ocp.sol is not None and ocp.sol.status != 0:
             print(f"Only {t} iterations were done.")
-            return False
+            #return False
         if ocp.sol:
             save_iteration(target_f_ext(t), target_mark(t), q_to_track, qdot_to_track, ocp.sol, t, "_iterations_tmp.bio")
-        return t < kin_init.shape[1] - (n_shooting + 1)
+        #return t < kin_init.shape[1] - (n_shooting + 1)
+        if t % 500 == 0:
+            print(t, "iterations done.")
+        return t < 2000
     return update_functions

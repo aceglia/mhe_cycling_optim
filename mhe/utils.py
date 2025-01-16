@@ -208,7 +208,7 @@ def get_data(ip=None, port=None, message=None, offline=False, offline_file_path=
 
 def apply_params(model, file_path=None, params=None, optimized_params=None, with_casadi=True, ratio=True):
     if file_path:
-        data = load(file_path, merge=False)[4] # [4]
+        data = load(file_path, merge=False)[0] # [4]
         param_list = data["p"]
         params_to_optim = data["optimized_params"]
     elif params is not None:
@@ -265,36 +265,29 @@ def load_mhe_results(data_path, n_frame_to_export):
 
 
 def load_data(data_path, filter_depth, model, muscle_track_idx, emg_names, part,  source="depth", interp_factor=1, n_init=0, n_final=None):
-
     data = load(data_path)
-    f_ext = data["f_ext"]
+    f_ext = data["shared"]["f_ext"][..., :data["vicon"]["q"].shape[-1]]
     names_from_source = data[source][f"marker_names"]
-    markers = data[source][f"tracked_markers"]
-    markers_tmp = markers.copy()
-    markers[:, 6, :] = markers_tmp[:, 7, :]
-    markers[:, 7, :] = markers_tmp[:, 6, :]
+    markers = data[source][f"markers"]
+    # markers_tmp = markers.copy()
+    # markers[:, 6, :] = markers_tmp[:, 7, :]
+    # markers[:, 7, :] = markers_tmp[:, 6, :]
 
     #markers[:, 6, :], markers[:, 7, :] = markers[:, 7, :], markers[:, 6, :]
 
-    emg = data["emg"]
-    if isinstance(data["emg"], np.ndarray):
+    emg = data["shared"]["emg"][..., :data["vicon"]["q"].shape[-1]]
+    if isinstance(data["shared"]["emg"], np.ndarray):
         muscles_target = map_activation(
             emg_proc=emg, muscle_track_idx=muscle_track_idx,
             model=model,
             emg_names=emg_names)
     else:
         muscles_target = np.zeros((model.nbMuscles(), markers.shape[2]))
-    if model.nbQ() != data[source]["q_raw"].shape[0]:
-        coef = 6
+    if model.nbQ() != data[source]["q"].shape[0]:
+        coef = int(data[source]["q"].shape[0] - model.nbQ())
     else:
         coef = 0
-    x_ref = np.concatenate((data[source]["q_raw"][coef:, :], data[source]["q_dot"][coef:, :]), axis=0)
-
-    # import bioviz
-    # b = bioviz.Viz(loaded_model=model)
-    # b.load_movement(x_ref[:16, :])
-    # b.load_experimental_markers(markers)
-    # b.exec()
+    x_ref = np.concatenate((data[source]["q"][coef:, :], data[source]["q_dot"][coef:, :]), axis=0)
     n_final = n_final if n_final is not None else x_ref.shape[1]
     x_ref = x_ref[:, n_init:n_final]
     markers_target = markers[:, :, n_init:n_final]
@@ -305,6 +298,11 @@ def load_data(data_path, filter_depth, model, muscle_track_idx, emg_names, part,
     x_ref, markers_target, muscles_target, f_ext = interpolate_data(
         interp_factor, x_ref, muscles_target, markers_target, f_ext,
     )
+    # import bioviz
+    # b = bioviz.Viz(loaded_model=model)
+    # b.load_movement(x_ref[:model.nbQ(), :])
+    # b.load_experimental_markers(markers_target)
+    # b.exec()
     return offline_data, markers_target, names_from_source, f_ext, muscles_target, x_ref
 
 def get_ratio(model, use_casadi=True):

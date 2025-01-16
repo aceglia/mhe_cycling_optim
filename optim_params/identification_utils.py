@@ -1,9 +1,7 @@
-from biosiglive import load
 import numpy as np
 from casadi import Function, vertcat, MX
 import casadi as ca
 from scipy.interpolate import interp1d
-from optim_params.casadi_utils import convert_to_casadi
 import random
 import itertools
 
@@ -134,9 +132,7 @@ def get_cost_to_map(scaling_factor, symbolics, weights,
             factor = 0.1 if tau_idx in [9] else factor
            #if tau_idx in [5,6,7,8]:
            #    continue
-            j +=  factor / torque_weights[tau_idx] * (pas_tau[tau_idx] ** 2)
-
-
+            j += factor / torque_weights[tau_idx] * (pas_tau[tau_idx] ** 2)
 
     if "lm_optim" in params_to_optim:
         # j += weights["bound_lnorm"] * (symbolics.muscles_len / (
@@ -153,8 +149,8 @@ def get_cost_to_map(scaling_factor, symbolics, weights,
         #     j += weights["bound_lnorm"] * norm_len[i, :]
         # for i in range(symbolics.lm_optim.shape[0]):
         # j += weights["bound_lnorm"] * (15000000 * ca.exp(200 - 500 * norm_len))
-        j += weights["bound_lnorm"] * ca.exp(40 - 80 * norm_len)
-
+        else:
+            j += weights["bound_lnorm"] * ca.exp(40 - 80 * norm_len)
         # j += weights["bound_lnorm"] * (15000000 * ca.exp(-50 * (norm_len)) ** 2)
            #J_params += (10000 * ca.sum2(norm_len[i, :] - 1)) **2
            # j += ca.sum2((1-ca.tanh(1000*(norm_len[i, :]-0.7))) * 1000) **2
@@ -173,20 +169,23 @@ def get_cost_to_map(scaling_factor, symbolics, weights,
     #     mus_tau_from_act = _get_muscle_torque(x, q, qdot, p, p_mapping, muscle_casadi_function, scaling_factor, with_param)
     #     #f = Function("msj", [x, q, qdot, p], [mus_tau_from_act])
     #     g =  mus_tau_from_act - symbolics.muscle_torque
+    ignore_dof = [] if ignore_dof is None else ignore_dof
     pas_tau_tmp = pas_tau if with_torque else None
     count = 0
     for t in range(mus_tau.shape[0]):
-        if t in passive_torque_idx:
+        factor=1
+        if with_torque and t in passive_torque_idx:
             to_substract = mus_tau[t] * scaling_factor[2] + pas_tau_tmp[count] if with_torque else mus_tau[t]
             count += 1
         elif t not in ignore_dof:
             to_substract = mus_tau[t] * scaling_factor[2]
+
         else:
             continue
         sqrt = 1 if tau_as_constraint else 2
-        factor = 0.1 if t in [3] else 1
-        factor = 0.1 if t in [9] else factor
-        j += factor * weights["tau_tracking"] * ((tau[t] * scaling_factor[2] - to_substract) ** sqrt)
+        factor = 1 if t in [9] else 1
+        factor = 1 if t in [15] else factor
+        j += factor * weights["tau_tracking"] * ((tau[t] * scaling_factor[2] - to_substract)**2)
     return j, g
 
 def return_obj_function(obj_funct, act, q, qdot, tau, emg, p=None, tau_res=None, tau_muscle=None, lm_init = None):
@@ -267,8 +266,8 @@ def return_bounds(model, scaling_factor, p, ns, x, pas_tau, muscle_torque, x0, t
     lbx = ca.DM.zeros(model.nbMuscles() * (ns)) + (0.0001) * scaling_factor[0]
     ubx = ca.DM.ones(model.nbMuscles() * (ns)) * scaling_factor[0]
     if g is not None:
-        lbg = ca.DM.zeros(g.shape[0]) - 0
-        ubg = ca.DM.zeros(g.shape[0]) + 0
+        lbg = ca.DM.zeros(g.shape[0]) + 0.5
+        ubg = ca.DM.zeros(g.shape[0]) + 1.5
     else:
         lbg = ca.DM.zeros(0)
         ubg = ca.DM.zeros(0)
@@ -276,7 +275,7 @@ def return_bounds(model, scaling_factor, p, ns, x, pas_tau, muscle_torque, x0, t
     if l_norm_bounded:
         if "lm_optim" in params_to_optim:
             ubg = 1.5
-            lbg = 0.2
+            lbg = 0.5
 
     if with_param:
         lb_p = None
@@ -463,5 +462,4 @@ def optimize_parameters_init(all_length, param_value):
     # Extract optimized parameter
     optimized_parameter = result.x[0]
     return optimized_parameter
-
 

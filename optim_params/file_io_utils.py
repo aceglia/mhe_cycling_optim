@@ -8,21 +8,44 @@ try:
 except:
     pass
 import matplotlib.pyplot as plt
+import bioviz
 
 
-def get_data_dict(file_path, n_cycles=1, batch_size=1, rate=120, cycle_size=60, from_id=False,  em_delay=0):
+def get_data_dict(file_path, n_cycles=1, batch_size=1, rate=120, cycle_size=60, from_id=False,  em_delay=0,
+                  end_idx=None):
+
     suffix = "_ocp" if not from_id else "_id"
     ocp_result = load(file_path)
-    peaks = find_peaks(ocp_result["q" + suffix][-2, :], height=0.5)[0]
+    peaks = find_peaks(ocp_result["q" + suffix][-2, :], height=0.2, distance=100)[0]
+    end_idx = end_idx if end_idx is not None else ocp_result["q" + suffix].shape[1]
+    # model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
+    # model = model_dir + f"/P11/output_models/gear_20_model_scaled_dlc_technical_marker_params.bioMod"
+    # b = bioviz.Viz(model_path=model)
+    # b.load_movement(ocp_result["q" + suffix])
+    # b.load_experimental_markers(ocp_result["markers_target"][..., :5000])
+    # b.exec()
+    # plt.figure("q")
+    # for i in range(ocp_result["q" + suffix].shape[0]):
+    #     plt.subplot(4, 4, i + 1)
+    #     plt.plot(ocp_result["q" + suffix][i, :])
+    # plt.figure("q_dot")
+    # for i in range(ocp_result["q_dot" + suffix].shape[0]):
+    #     plt.subplot(4, 4, i + 1)
+    #     plt.plot(ocp_result["q_dot" + suffix][i, :])
+    # plt.figure("tau")
+    # for i in range(ocp_result["tau" + suffix].shape[0]):
+    #     plt.subplot(4, 4, i + 1)
+    #     plt.plot(ocp_result["tau" + suffix][i, :])
+    # plt.show()
     em_delay_frame = int(em_delay * rate)
     if em_delay_frame != 0:
         for key in ocp_result.keys():
             if not isinstance(ocp_result[key], np.ndarray):
                 continue
             if "q" in key or "q_dot" in key or "tau" in key or "f_ext" in key:
-                ocp_result[key] = ocp_result[key][:, em_delay_frame:]
+                ocp_result[key] = ocp_result[key][:, em_delay_frame:end_idx]
             if "emg" in key:
-                ocp_result[key] = ocp_result[key][:, :-em_delay_frame] if em_delay != 0 else ocp_result[key][..., :]
+                ocp_result[key] = ocp_result[key][:, :-em_delay_frame] if em_delay != 0 else ocp_result[key][..., :end_idx]
     ocp_result = process_cycles(ocp_result, peaks, interpolation_size=cycle_size, remove_outliers=False)
     q, qdot, tau, f_ext, emg = (ocp_result["cycles"]["q" + suffix], ocp_result["cycles"]["q_dot" + suffix],
                                      ocp_result["cycles"]["tau" + suffix], ocp_result["cycles"]["f_ext"],
@@ -48,15 +71,23 @@ def get_experimental_data(file_path, n_start=0, n_stop=None, source="dlc_1", dow
     out_dict["q_init"] = data[source]["q"][:, n_start:n_stop][..., ::downsample]
     out_dict["q_dot_init"] = data[source]["q_dot"][:, n_start:n_stop][..., ::downsample]
     out_dict["emg"] = data["shared"]["emg"][:, n_start:n_stop][..., ::downsample]
-    names = data[source]["marker_names"]
-    ia_idx = names.index("SCAP_IA")
-    ts_idx = names.index("SCAP_TS")
-    mark_ia = data[source][f"markers"][:, ia_idx, :].copy()
-    mark_ts = data[source][f"markers"][:, ts_idx, :].copy()
-    data[source][f"markers"][:, ia_idx, :] = mark_ts
-    data[source][f"markers"][:, ts_idx, :] = mark_ia
+    # names = data[source]["marker_names"]
+    # ia_idx = names.index("SCAP_IA")
+    # ts_idx = names.index("SCAP_TS")
+    # mark_ia = data[source][f"markers"][:, ia_idx, :].copy()
+    # mark_ts = data[source][f"markers"][:, ts_idx, :].copy()
+    # data[source][f"markers"][:, ia_idx, :] = mark_ts
+    # data[source][f"markers"][:, ts_idx, :] = mark_ia
     out_dict["markers_target"] = data[source][f"markers"][:, :, n_start:n_stop][..., ::downsample]
+    # import bioviz
+    # model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
+    # model = model_dir + f"/P11/output_models/gear_20_model_scaled_dlc_technical_marker_params.bioMod"
+    # b = bioviz.Viz(model_path=model)
+    # b.load_movement(out_dict["q_init"])
+    # b.load_experimental_markers(out_dict["markers_target"])
+    # b.exec()
     return out_dict
+
 
 def get_all_file(participants, data_dir, trial_names=None, to_include=(), to_exclude=()):
     all_path = []
@@ -121,4 +152,3 @@ def save_torque_estimation(file_path, torque_estimation):
     if with_f_ext:
         save_dic["f_ext_ocp"] = merged_controls["f_ext"]
         save_dic["init_f_ext"] = f_ext[:, :-(n_shooting + 1)]
-

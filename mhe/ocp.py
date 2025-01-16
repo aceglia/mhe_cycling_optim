@@ -98,7 +98,7 @@ def define_objective(
     objectives.add(
         ObjectiveFcn.Lagrange.MINIMIZE_STATE,
         weight=weights["min_q"],
-        index=np.array(range(biorbd_model.nb_q)),
+        index=np.array(range(16 - biorbd_model.nb_q, biorbd_model.nb_q)),
         key="q",
         node=Node.ALL,
         multi_thread=False,
@@ -108,7 +108,7 @@ def define_objective(
     objectives.add(
         ObjectiveFcn.Lagrange.MINIMIZE_STATE,
         weight=weights["min_dq"],
-        index=np.array(range(biorbd_model.nb_q)),
+        index=np.array(range(16 - biorbd_model.nb_q, biorbd_model.nb_q)),
         key="qdot",
         node=Node.ALL,
         multi_thread=False,
@@ -178,7 +178,7 @@ def define_objective(
 
     if use_torque:
         objectives.add(
-            ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, weight=weights["min_torque"], key="tau", multi_thread=False,
+            ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, index=np.array(range(16 - biorbd_model.nb_q, biorbd_model.nb_tau)), weight=weights["min_torque"], key="tau", multi_thread=False,
             quadratic=True,
         )
 
@@ -235,7 +235,8 @@ def custom_muscles_driven(
     # for i in range(nlp.model.nb_q):
     #     if i > 4 and i != nlp.model.nb_q - 1:
     #         residual_tau[i] = MX(0)
-
+    # residual_tau[1] += 300
+    # residual_tau[0] -= 80
     tau = muscles_tau + residual_tau if residual_tau is not None else muscles_tau
     dq = DynamicsFunctions.compute_qdot(nlp, q, qdot)
 
@@ -357,7 +358,7 @@ def prepare_problem(
         f_ext_min, f_ext_max, f_ext_init = f_ext_0, f_ext_0, f_ext_0
     elif with_f_ext and f_ext_as_constraints is False:
         pass
-    f_ext_min, f_ext_max, f_ext_init = -50, 50, f_ext_0
+    f_ext_min, f_ext_max, f_ext_init = -5000, 5000, f_ext_0
 
     # Dynamics
     dynamics = DynamicsList()
@@ -402,7 +403,6 @@ def prepare_problem(
     u_init = InitialGuessList()
     x_init.add("q", x0[:biorbd_model.nb_q, :], interpolation=InterpolationType.EACH_FRAME)
     x_init.add("qdot", x0[biorbd_model.nb_q:, :], interpolation=InterpolationType.EACH_FRAME)
-
     u_init.add("tau", np.ones((nbGT)) * tau_init, interpolation=InterpolationType.CONSTANT)
     u_init.add("muscles", np.ones((biorbd_model.nb_muscles)) * muscle_init,
                interpolation=InterpolationType.CONSTANT)
@@ -472,13 +472,13 @@ def configure_weights():
     weights = {
     "min_dq": 10,
     "min_q": 1,
-    "min_torque": 500,
-    "min_activation": 100,
+    "min_torque": 100,
+    "min_activation": 500,
     "min_tracked_activation": 10,
-    "track_emg": 1000000,
+    "track_emg": 10000000,
     "previous_q": 100,
     "previous_q_dot": 100,
-    "track_kin": 100000000,
+    "track_kin": 1000000000,
     "f_ext": 10000000,
     }
 
@@ -760,7 +760,7 @@ def update_mhe(mhe, t: int, sol: bioptim.Solution, ei, initial_time: float):
             sleep((1 / ei.exp_freq) - time_tot)
         ei.slide_size = tmp_slide_size
 
-    if t == 810:
+    if t == 200:
         # plt.figure("n")
         # plt.plot()
         # plt.show()

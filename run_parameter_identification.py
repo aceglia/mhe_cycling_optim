@@ -9,17 +9,18 @@ import biorbd
 import numpy as np
 
 
-weights = {"tau_tracking": 1000,
-           "activation_tracking": 100,
-           "min_act": 0,
-           "min_f_iso": 100,
-           "min_lm_optim": 0,
-"min_lt_slack": 0,
+weights = {"tau_tracking": 0.51,
+           "activation_tracking": 1,
+           "min_act": 0.1,
+           "min_f_iso": 0.1,
+           "min_lm_optim": 0.1,
+           "min_lt_slack": 0,
            "min_pas_torque": 50000,
-           "bound_lnorm" : 0 #10000
+           "bound_lnorm": 0 #10000
            }
 
 emg_names_init = ["PectoralisMajorThorax",
+                # "TRI",
              "BIC",
              "TRI",
              "LatissimusDorsi",
@@ -42,8 +43,8 @@ def update_data(initial_data, random_idx_list):
     q_final = np.zeros((q.shape[1], cycle_size * n_cycles))
     qdot_final = np.zeros((qdot.shape[1], cycle_size * n_cycles))
     tau_final = np.zeros((tau.shape[1], cycle_size * n_cycles))
-    f_ext_final = np.zeros((f_ext.shape[1], cycle_size  * n_cycles))
-    emg_final = np.zeros((emg.shape[1], cycle_size  * n_cycles))
+    f_ext_final = np.zeros((f_ext.shape[1], cycle_size * n_cycles))
+    emg_final = np.zeros((emg.shape[1], cycle_size * n_cycles))
     for i in range(n_cycles):
         q_final[:, i * cycle_size:(i + 1) * cycle_size] = q[i, :, :]
         qdot_final[:, i * cycle_size:(i + 1) * cycle_size] = qdot[i, :, :]
@@ -67,6 +68,7 @@ def update_data(initial_data, random_idx_list):
     dict_data = {"q": q_final, "qdot": qdot_final, "tau": tau_final, "f_ext": f_ext_final, "emg": emg_final}
     return dict_data
 
+
 def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_mapping=False):
     optim_param_list = [p.value for p in optim_param_list]
     param_bounds = [[0.0, 1.0] for _ in optim_param_list]
@@ -88,31 +90,29 @@ def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_
     list_mapping = list(range(eigen_model.nbMuscles()))
     if use_p_mapping and "f_iso" in optim_param_list:
         list_mapping = [0, 1, 2, 3, 3, 4, 5, 6, 7, 7, 7, 8, 9, 10, 11, 12, 12, 13, 14, 14, 14, 15, 15, 16, 17, 18, 18,
-                                         18, 19, 19, 20, 20, 20, 21, 21]
+                        18, 19, 19, 20, 20, 20, 21, 21]
         p_mapping = [list(range(max(list_mapping) + 1)), list_mapping]
         p_mapping_list[optim_param_list.index("f_iso")] = p_mapping
     return param_bounds, p_init, p_mapping_list, all_muscle_len, list_mapping
+
 
 if __name__ == '__main__':
     with_param = True
     with_residual_torque = False
     use_ratio_tracking = True
-    save_data = False
-    participants = [f"P{i}" for i in range(10, 17)]
+    save_data = True
+    participants = [f"P{i}" for i in range(11, 12)]
     params_to_optimize = [Parameters.f_iso, Parameters.lm_optim]# , Parameters.lt_slack] #]# [Parameters.lm_optim, , Parameters.lt_slack] #
     data_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/reference_data"
     model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
-
-
-    files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20_mvc.bio"])
-
-    n_cycles = [5, 1,2,3,4,5]
+    files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20_with_technical_marker.bio"])
+    n_cycles = [3,1,2,3,4,5]
     batch_size = 3
     date = time.strftime("%Y-%m-%d_%H-%M")
     for file, participant in zip(files, part):
         list_tmp = file.replace(".bio", "").split("/")[-1].split("_")
         trial_short = "gear_" + list_tmp[list_tmp.index("gear") + 1]
-        model_path = model_dir + f"/{participant}/output_models/{trial_short}_model_scaled_dlc_ribs_new_seth_param.bioMod"
+        model_path = model_dir + f"/{participant}/output_models/{trial_short}_model_scaled_dlc_technical_marker_params.bioMod"
         emg_names = emg_names_init.copy()
         if participant == 'P11':
             emg_names.pop(emg_names.index('LatissimusDorsi'))
@@ -126,20 +126,21 @@ if __name__ == '__main__':
             identifier = ParametersIdentifier(params_to_optimize)
             cycle_size = 25
             initial_data, idx_random = get_data_dict(file, n_cycles=n_cycle, batch_size=batch_size, rate=120,
-                                                              cycle_size=cycle_size, from_id=False, em_delay=0)
+                                                              cycle_size=cycle_size, from_id=False, em_delay=0,
+                                                     end_idx=3000)
             if "min_lm_optim" in weights:
                 weights["lm_optim"] = weights["min_lm_optim"] * n_cycle # + 10 * (n_cycles - 1)
             if "min_f_iso" in weights:
                 weights["min_f_iso"] = weights["min_f_iso"] * n_cycle #+ 10 * (n_cycles - 1)
             for i in range(batch_size):
-                identifier.load_experimental_data(update_data(initial_data,idx_random[i]))
+                identifier.load_experimental_data(update_data(initial_data, idx_random[i]))
                 param_bounds, p_init, p_mapping_list, MTU_len, list_mapping = initialize_bounds_and_mapping(
-                    params_to_optimize, model_path,
-                                              identifier.q, use_p_mapping=False)
+                    params_to_optimize, model_path, identifier.q, use_p_mapping=False)
                 identifier.initialize_problem(model_path, p_mapping_list, with_residual_torques=with_residual_torque,
-                                               threads=1, weights=weights, scaling_factor=(1, (1,1, 1), 1), emg_names=emg_names,
+                                               threads=1, weights=weights, scaling_factor=(1, (1, 1, 1), 1), emg_names=emg_names,
                                               all_muscle_len=MTU_len, l_norm_bounded=True, p_init=None,
-                                              param_bounds=param_bounds, use_sx=True, add_muscle_torque_constraint=False)
+                                              param_bounds=param_bounds, use_sx=True, add_muscle_torque_constraint=False,
+                                              ignore_dof=list(range(6)))
                 identifier.solve(save_results=save_data, output_file=output_file, max_iter=1000,
                                  hessian_approximation="exact",
                                  linear_solver="ma57",
@@ -153,4 +154,3 @@ if __name__ == '__main__':
                                  plot=True, objective_scale_factor=10, cycle_number=idx_random[i], batch_number=i)
 
                 print(f"Optimization for participant {participant} and trial {trial_short} is done for batch {i} and cycles {n_cycle}")
-

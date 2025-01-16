@@ -1,7 +1,5 @@
 import os
 import time
-from types import NoneType
-
 from optim_params.ocp_utils import prepare_ocp, get_update_function, get_solver_options
 from bioptim import Solver, SolutionMerge, BiorbdModel
 import numpy as np
@@ -129,7 +127,6 @@ class TorqueEstimator:
         else:
             raise ValueError("Please specify a valid key")
 
-
     def _get_torque_from_inverse_dynamics(self):
         raise NotImplementedError("Inverse dynamics torque computation not implemented yet")
 
@@ -171,7 +168,6 @@ class TorqueEstimator:
             elif value is None:
                 final_data_to_save[key] = None
         save(final_data_to_save, output_path, safe=False)
-
 
 
 
