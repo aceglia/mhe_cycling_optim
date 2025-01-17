@@ -8,7 +8,9 @@ from biosiglive import load
 from casadi import MX
 
 
-def check_muscle_sanity(model_path, q, q_dot, tau, emg, plot_passive=True, plot_moment_arm=True, plot_length=True, color="b"):
+def check_muscle_sanity(
+    model_path, q, q_dot, tau, emg, plot_passive=True, plot_moment_arm=True, plot_length=True, color="b"
+):
     model = biorbd.Model(model_path)
     # import bioviz
     # b = bioviz.Viz(model_path)
@@ -40,9 +42,11 @@ def check_muscle_sanity(model_path, q, q_dot, tau, emg, plot_passive=True, plot_
         for m in range(model.nbMuscles()):
             muscles_states[m].setActivation(mus_act[m])
             model.muscle(m).characteristics().setForceIsoMax(
-                model.muscle(m).characteristics().forceIsoMax().to_mx() * (p_f[m]))
+                model.muscle(m).characteristics().forceIsoMax().to_mx() * (p_f[m])
+            )
             model.muscle(m).characteristics().setOptimalLength(
-                model.muscle(m).characteristics().optimalLength().to_mx() * (p_lm[m]))
+                model.muscle(m).characteristics().optimalLength().to_mx() * (p_lm[m])
+            )
         muscles_force = model.muscleForces(muscles_states, q, qdot).to_mx()
         return model.muscularJointTorque(muscles_force, q, qdot).to_mx()
 
@@ -90,8 +94,8 @@ def check_muscle_sanity(model_path, q, q_dot, tau, emg, plot_passive=True, plot_
     #         plt.title(model.muscleNames()[j].to_string())
     # plt.legend([name.to_string() for name in model.nameDof()][6:])
 
-    #q = np.zeros_like(q)
-    #q[4, :] = np.linspace(-5 *3.14/180, 17 *3.14/180, q.shape[1])
+    # q = np.zeros_like(q)
+    # q[4, :] = np.linspace(-5 *3.14/180, 17 *3.14/180, q.shape[1])
     # passive_torque = np.zeros((model.nbGeneralizedTorque(), q.shape[1]))
     # k1 = -50
     # k2 = -2
@@ -109,8 +113,8 @@ def check_muscle_sanity(model_path, q, q_dot, tau, emg, plot_passive=True, plot_
     # plt.figure("passive_force")
     # # plt.plot(q[4, :], passive_torque[4, :])
     # plt.plot(q[4, :], passive_torque_num[4, :])
-    #plt.show()
-    #q[4, :] = np.linspace(-5, 17, q.shape[1])
+    # plt.show()
+    # q[4, :] = np.linspace(-5, 17, q.shape[1])
     # model_ca = biorbd_ca.Model(model_path)
     #
     # q_sym = ca.MX.sym("q", model_ca.nbQ())
@@ -123,7 +127,7 @@ def check_muscle_sanity(model_path, q, q_dot, tau, emg, plot_passive=True, plot_
         ratio = l_slack / l_optim
         coef = 1
         coef_iso = 1
-        l_slack = (l_optim * coef ) * ratio
+        l_slack = (l_optim * coef) * ratio
         l_optim = l_optim * coef
         model.muscle(i).characteristics().setOptimalLength(l_optim)
         model.muscle(i).characteristics().setForceIsoMax(f_iso * coef_iso)
@@ -160,9 +164,11 @@ def check_muscle_sanity(model_path, q, q_dot, tau, emg, plot_passive=True, plot_
             mus_tmp.computeFlPE()
             mus_tmp.computeFlCE(muscle_states[m])
             mus_tmp.computeFvCE()
-            mus_flce[m, i] = 0.2 *  mus_tmp.FlCE(muscle_states[m]) * mus_tmp.characteristics().forceIsoMax()
+            mus_flce[m, i] = 0.2 * mus_tmp.FlCE(muscle_states[m]) * mus_tmp.characteristics().forceIsoMax()
             mus_fvce[m, i] = 0.2 * mus_tmp.FvCE() * mus_tmp.characteristics().forceIsoMax()
-            mus_f_tot[m, i] = mus_tmp.characteristics().forceIsoMax() * (0.2 * mus_tmp.FlCE(muscle_states[m]) * mus_tmp.FvCE() + mus_tmp.FlPE())
+            mus_f_tot[m, i] = mus_tmp.characteristics().forceIsoMax() * (
+                0.2 * mus_tmp.FlCE(muscle_states[m]) * mus_tmp.FvCE() + mus_tmp.FlPE()
+            )
             mus_flpe[m, i] = mus_tmp.FlPE() * mus_tmp.characteristics().forceIsoMax()
     # for i in range(model.nbMuscles()):
     #     max_ma = np.max(moment_arm[i, ...])
@@ -226,7 +232,7 @@ def check_muscle_sanity(model_path, q, q_dot, tau, emg, plot_passive=True, plot_
                 if abs(np.mean(moment_arm[j, i, :])) > 0.0001:
                     plt.plot(mus_f_tot[j, :] * moment_arm[j, i, :], color=color_by_dof(i))
                 plt.title(model.muscleNames()[j].to_string())
-        plt.figure('torque_elbow')
+        plt.figure("torque_elbow")
         for j in range(model.nbMuscles()):
             if j == 0:
                 plt.plot(tau[-2, :], color="r")
@@ -240,8 +246,8 @@ def check_muscle_sanity(model_path, q, q_dot, tau, emg, plot_passive=True, plot_
         for i in range(model.nbMuscles()):
             plt.subplot(6, 7, i + 1)
             plt.plot(velocity[i, :] / max_vel, color)
-            #plt.plot(length_ca[i, :])
-            plt.plot(np.repeat(max_vel/ max_vel, q.shape[1]), "--", c=color)
+            # plt.plot(length_ca[i, :])
+            plt.plot(np.repeat(max_vel / max_vel, q.shape[1]), "--", c=color)
             plt.title(model.muscleNames()[i].to_string())
     if plot_length:
         plt.figure("norm_length")
@@ -262,37 +268,37 @@ def check_muscle_sanity(model_path, q, q_dot, tau, emg, plot_passive=True, plot_
     plt.figure("q")
     max_vel = 5
     for i in range(model.nbQ()):
-        plt.subplot(model.nbQ()//3 + 1, 3, i+1)
+        plt.subplot(model.nbQ() // 3 + 1, 3, i + 1)
         plt.plot(q[i, :], color)
     plt.figure("qdot")
     max_vel = 5
     for i in range(model.nbQ()):
-        plt.subplot(model.nbQ()//3 + 1, 3, i+1)
+        plt.subplot(model.nbQ() // 3 + 1, 3, i + 1)
         plt.plot(q_dot[i, :], color)
     plt.figure("tau")
     max_vel = 5
     for i in range(model.nbQ()):
-        plt.subplot(model.nbQ()//3 + 1, 3, i+1)
+        plt.subplot(model.nbQ() // 3 + 1, 3, i + 1)
         plt.plot(tau[i, :], color)
     plt.show()
 
 
 def optimize_parameters_init(all_length, param_value):
     from scipy.optimize import minimize
+
     # Define the function with a penalty if the parameter goes out of the range
     def objective(x, lengths, lower_bound, upper_bound):
         # If x is within bounds, return zero penalty (objective is zero)
-        norm_len = (lengths / (param_value * x))
+        norm_len = lengths / (param_value * x)
         if lower_bound <= norm_len.min() <= upper_bound and lower_bound <= norm_len.max() <= upper_bound:
             return 0
         # Apply a penalty proportional to the distance from the nearest bound if out of range
         elif lower_bound >= norm_len.min():
-           return  (lower_bound - norm_len.min()) ** 2
+            return (lower_bound - norm_len.min()) ** 2
         elif upper_bound <= norm_len.max():
             return (norm_len.max() - upper_bound) ** 2
         else:
             return 0
-
 
     # Set bounds and initial guess
     lower_bound = 0.5
@@ -300,17 +306,20 @@ def optimize_parameters_init(all_length, param_value):
     initial_guess = 1.0  # Initial guess outside the range
 
     # Run optimization to find the parameter value within bounds
-    result = minimize(objective, initial_guess, args=(all_length, lower_bound, upper_bound), bounds=[(lower_bound, upper_bound)])
+    result = minimize(
+        objective, initial_guess, args=(all_length, lower_bound, upper_bound), bounds=[(lower_bound, upper_bound)]
+    )
 
     # Extract optimized parameter
     optimized_parameter = result.x[0]
     return optimized_parameter
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import os
+
     participants = [f"P{i}" for i in range(10, 17)]
-    prefix = "/mnt/shared/" if os.name == 'posix' else r"Q:/"
+    prefix = "/mnt/shared/" if os.name == "posix" else r"Q:/"
     data_dir = f"{prefix}Projet_hand_bike_markerless/optim_params/reference_data"
     model_dir = f"{prefix}Projet_hand_bike_markerless/RGBD/"
     files, part = get_all_file(participants, data_dir, to_include=["reference_torque_gear_20_with_technical_marker"])
@@ -321,4 +330,4 @@ if __name__ == '__main__':
     tau = data["tau_ocp"][..., :end_idx]
     emg = data["emg"][..., :end_idx]
     model = model_dir + f"/{part[0]}/output_models/gear_20_model_scaled_dlc_technical_marker_params.bioMod"
-    check_muscle_sanity(model, q, q_dot,tau, emg,  plot_passive=True, plot_moment_arm=True, plot_length=True, color="r")
+    check_muscle_sanity(model, q, q_dot, tau, emg, plot_passive=True, plot_moment_arm=True, plot_length=True, color="r")

@@ -51,32 +51,49 @@ class TorqueEstimator:
             setattr(self, key, value)
         self.kin_init = np.concatenate((self.q_init, self.q_dot_init), axis=0)
 
-
-    def init_ocp(self, biorbd_model_path, ocp_time, n_shooting,
-                 with_external_loads=False, use_mhe = True, track_previous=False, n_threads=6, weights=None):
+    def init_ocp(
+        self,
+        biorbd_model_path,
+        ocp_time,
+        n_shooting,
+        with_external_loads=False,
+        use_mhe=True,
+        track_previous=False,
+        n_threads=6,
+        weights=None,
+    ):
         self.use_mhe = use_mhe
         self.track_previous = track_previous
         self.n_threads = n_threads
         self.n_shooting = n_shooting
         self.ocp_time = ocp_time
         self.with_external_loads = with_external_loads
-        self.ocp, self.bio_model = prepare_ocp(biorbd_model_path=biorbd_model_path,
-                          final_time=self.ocp_time,
-                          n_shooting=self.n_shooting,
-                          use_sx=use_mhe,
-                          n_threads=6,
-                          kin_init=self.kin_init,
-                          f_ext=self.f_ext,
-                          target=self.markers_target[..., :self.n_shooting + 1],
-                          with_f_ext=with_external_loads,
-                          mhe=use_mhe,
-                          track_previous=track_previous,
-                          weights=weights
-                          )
+        self.ocp, self.bio_model = prepare_ocp(
+            biorbd_model_path=biorbd_model_path,
+            final_time=self.ocp_time,
+            n_shooting=self.n_shooting,
+            use_sx=use_mhe,
+            n_threads=6,
+            kin_init=self.kin_init,
+            f_ext=self.f_ext,
+            target=self.markers_target[..., : self.n_shooting + 1],
+            with_f_ext=with_external_loads,
+            mhe=use_mhe,
+            track_previous=track_previous,
+            weights=weights,
+        )
         self.ocp_initialized = True
 
-    def compute_torque(self, from_direct_dynamics=False, from_inverse_dynamics=False,
-                   with_external_loads=False, model_path=None, output_path=None, save_data=False, adapt_size_to_ocp=True):
+    def compute_torque(
+        self,
+        from_direct_dynamics=False,
+        from_inverse_dynamics=False,
+        with_external_loads=False,
+        model_path=None,
+        output_path=None,
+        save_data=False,
+        adapt_size_to_ocp=True,
+    ):
         self.save_data = save_data
         if not self.is_data_loaded:
             raise ValueError("Experimental data not loaded")
@@ -100,12 +117,14 @@ class TorqueEstimator:
             self._save_data(output_path, adapt_size_to_ocp)
 
     def get_computed_torque(self, from_direct_dynamics=True, from_inverse_dynamics=False):
-        return self._get_data(from_direct_dynamics=from_direct_dynamics,
-                              from_inverse_dynamics=from_inverse_dynamics, key="torque")
+        return self._get_data(
+            from_direct_dynamics=from_direct_dynamics, from_inverse_dynamics=from_inverse_dynamics, key="torque"
+        )
 
     def get_computed_kinematics(self, from_direct_dynamics=True, from_inverse_dynamics=False):
-        return self._get_data(from_direct_dynamics=from_direct_dynamics,
-                              from_inverse_dynamics=from_inverse_dynamics, key="kin")
+        return self._get_data(
+            from_direct_dynamics=from_direct_dynamics, from_inverse_dynamics=from_inverse_dynamics, key="kin"
+        )
 
     def _get_data(self, from_direct_dynamics=True, from_inverse_dynamics=False, key=None):
         if from_direct_dynamics and from_inverse_dynamics:
@@ -135,10 +154,20 @@ class TorqueEstimator:
             if os.path.exists("_iterations_tmp.bio"):
                 os.remove("_iterations_tmp.bio")
             tic = time.time()
-            sol = self.ocp.solve(get_update_function(self.markers_target, self.f_ext, self.with_external_loads,
-                                                     self.track_previous, self.kin_init, self.n_shooting,
-                                                     self.bio_model, self.ocp, self.save_data)
-                            , **get_solver_options(Solver.ACADOS()))
+            sol = self.ocp.solve(
+                get_update_function(
+                    self.markers_target,
+                    self.f_ext,
+                    self.with_external_loads,
+                    self.track_previous,
+                    self.kin_init,
+                    self.n_shooting,
+                    self.bio_model,
+                    self.ocp,
+                    self.save_data,
+                ),
+                **get_solver_options(Solver.ACADOS())
+            )
             self.solving_time = time.time() - tic
 
         else:
@@ -162,12 +191,9 @@ class TorqueEstimator:
             if key.startswith("_"):
                 continue
             if isinstance(value, np.ndarray) and (adapt_size and "ocp" not in key and self.use_mhe):
-                final_data_to_save[key] = value[..., : - (self.n_shooting + 1)]
+                final_data_to_save[key] = value[..., : -(self.n_shooting + 1)]
             elif isinstance(value, (np.ndarray, bool, int, float, str, list, tuple)):
                 final_data_to_save[key] = value
             elif value is None:
                 final_data_to_save[key] = None
         save(final_data_to_save, output_path, safe=False)
-
-
-

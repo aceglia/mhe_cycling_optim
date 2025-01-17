@@ -21,7 +21,7 @@ def update_plot(estimator_instance, force_est: np.ndarray, q_est: np.ndarray, in
     absolute_delay_plot = 0
     if estimator_instance.data_to_show.count("force") != 0:
         estimator_instance.force_to_plot = np.append(
-            estimator_instance.force_to_plot[:, -estimator_instance.exp_freq - 1:], force_est, axis=1
+            estimator_instance.force_to_plot[:, -estimator_instance.exp_freq - 1 :], force_est, axis=1
         )
         estimator_instance.all_plot.update_plot_window(
             estimator_instance.all_plot.plot[0],

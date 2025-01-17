@@ -1,6 +1,7 @@
 """
 This script is the main script for the project. It is used to run the mhe solver and visualize the estimated data.
 """
+
 import os.path
 
 import biorbd
@@ -87,7 +88,13 @@ class MuscleForceEstimator:
         self.init_n = 0
         self.final_n = None
         self.result_file_name = None
-        self.markers_target, self.muscles_target, self.x_ref, self.kin_target, self.f_ext_target = None, None, None, None, None
+        self.markers_target, self.muscles_target, self.x_ref, self.kin_target, self.f_ext_target = (
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
         self.n_loop = 0
         self.mhe, self.solver, self.get_force, self.force_est = None, None, None, None
         self.model = None
@@ -103,9 +110,7 @@ class MuscleForceEstimator:
             self.__dict__[key] = conf[key]
 
         if self.f_ext_as_constraints and self.with_f_ext is False:
-            raise RuntimeError(
-                "we must have with_f_ext True to use constraints"
-            )
+            raise RuntimeError("we must have with_f_ext True to use constraints")
 
         self.T_mhe = self.mhe_time
         self.n_before_interpolate = int(self.T_mhe * self.markers_rate)
@@ -144,7 +149,7 @@ class MuscleForceEstimator:
                 str_model_tmp += str_model[end_idx:]
                 break
             str_model_tmp += str_model[end_idx:idx_tmp]
-            end_idx = str_model.find('\n', idx_tmp)
+            end_idx = str_model.find("\n", idx_tmp)
             str_model_tmp += str(param_model.muscle(count).characteristics().optimalLength())
             start_idx = end_idx
             count += 1
@@ -161,7 +166,7 @@ class MuscleForceEstimator:
                 str_model_tmp += str_model[end_idx:]
                 break
             str_model_tmp += str_model[end_idx:idx_tmp]
-            end_idx = str_model.find('\n', idx_tmp)
+            end_idx = str_model.find("\n", idx_tmp)
             str_model_tmp += str(param_model.muscle(count).characteristics().forceIsoMax())
             start_idx = end_idx
             count += 1
@@ -176,7 +181,7 @@ class MuscleForceEstimator:
                 str_model_tmp += str_model[end_idx:]
                 break
             str_model_tmp += str_model[end_idx:idx_tmp]
-            end_idx = str_model.find('\n', idx_tmp)
+            end_idx = str_model.find("\n", idx_tmp)
             str_model_tmp += str(param_model.muscle(count).characteristics().tendonSlackLength())
             start_idx = end_idx
             count += 1
@@ -192,8 +197,9 @@ class MuscleForceEstimator:
         if self.use_optim_params:
             suffix = "_id" if "_id" in mhe_result_filename else "_fd"
             suffix = "_fd"
-            self.model_path = self._update_params(self.model_path, self.parameters_file_path,
-                                                  with_casadi=False, ratio=True, suffix=suffix)
+            self.model_path = self._update_params(
+                self.model_path, self.parameters_file_path, with_casadi=False, ratio=True, suffix=suffix
+            )
         self.biorbd_model = BiorbdModel(self.model_path)
         # Old data :
         # x_ref, markers_target, emg = get_data(offline=True, offline_file_path=self.offline_file)
@@ -207,17 +213,20 @@ class MuscleForceEstimator:
 
         # New data :
         self.muscle_track_idx = get_tracking_idx(self.biorbd_model.model, self.emg_names)
-        self.offline_data, self.markers_target, markers_names, self.f_ext_target, self.muscles_target, self.x_ref = load_data(self.offline_file,
-                                                                                                                              part=self.part,
-                                                                                      source=self.source,
-                                                                                      filter_depth=True,
-                                                                                      model=biorbd_eigen.Model(self.model_path),
-                                                                                      muscle_track_idx=self.muscle_track_idx,
-                                                                                      emg_names=self.emg_names,
-                                                                                      interp_factor=self.interpol_factor,
-                                                                                      n_init=0,
-                                                                                      n_final=None
-                                                                                      )
+        self.offline_data, self.markers_target, markers_names, self.f_ext_target, self.muscles_target, self.x_ref = (
+            load_data(
+                self.offline_file,
+                part=self.part,
+                source=self.source,
+                filter_depth=True,
+                model=biorbd_eigen.Model(self.model_path),
+                muscle_track_idx=self.muscle_track_idx,
+                emg_names=self.emg_names,
+                interp_factor=self.interpol_factor,
+                n_init=0,
+                n_final=None,
+            )
+        )
 
         # if self.use_optim_params:
         #     self.biorbd_model.model = apply_params(self.biorbd_model, self.parameters_file_path, with_casadi=True, ratio=True)
@@ -273,13 +282,13 @@ class MuscleForceEstimator:
         self.force_est = np.ndarray((self.biorbd_model.nb_muscles, 1))
 
     def run(
-            self,
-            var: dict,
-            server_ip: str = None,
-            server_port: int = None,
-            data_to_show: list = None,
-            test_offline: bool = False,
-            offline_file: str = None,
+        self,
+        var: dict,
+        server_ip: str = None,
+        server_port: int = None,
+        data_to_show: list = None,
+        test_offline: bool = False,
+        offline_file: str = None,
     ):
         """
         Run the whole multiprocess program.
@@ -385,9 +394,7 @@ class MuscleForceEstimator:
                 raise RuntimeError(f"{key} is not a variable of the class")
         initial_time = time()
         sol = self.mhe.solve(
-            lambda mhe, i, sol: update_mhe(
-                mhe, i, sol, self, initial_time=initial_time
-            ),
+            lambda mhe, i, sol: update_mhe(mhe, i, sol, self, initial_time=initial_time),
             export_options={"frame_to_export": self.frame_to_save},
             solver=self.solver,
         )
@@ -399,6 +406,7 @@ class MuscleForceEstimator:
         # from plot_results import plot_results
         # plot_results(x_ref, states_tmp, controls_tmp, self.muscles_target, self.f_ext_target, self.muscle_track_idx,
         #              self.nbQ)
+
 
 def _remove_root_dofs(model_path):
     with open(model_path, "r") as file:
@@ -431,7 +439,7 @@ if __name__ == "__main__":
     # participants.pop(participants.index("P12"))
     # participants.pop(participants.index("P15"))
     # participants.pop(participants.index("P16"))
-    #participants = ["P10"]
+    # participants = ["P10"]
     # init_trials = [["gear_5", "gear_10", "gear_15", "gear_20"]] * len(participants)
     init_trials = [["gear_20"]] * len(participants)
 
@@ -440,10 +448,10 @@ if __name__ == "__main__":
     configs = [0.08]
     exp_freq = [30]
     dlc_model = "normal_500_down_b1"
-    use_optim_params = [True, False]#, False]
+    use_optim_params = [True, False]  # , False]
     dyn = ["fd"]
-    #for c, config in enumerate(configs):
-    #c = True
+    # for c, config in enumerate(configs):
+    # c = True
     for p, part in enumerate(participants):
         model_dir = prefix + f"/Projet_hand_bike_markerless/RGBD/{part}/output_models"
         # result_dir = f"results/{part}"
@@ -478,15 +486,17 @@ if __name__ == "__main__":
                         os.remove(mhe_result_filename)
                     model = f"{model_dir}/{trial}_model_scaled_dlc_technical_marker_params.bioMod"
                     model = _remove_root_dofs(model)
-                    emg_name = ["PectoralisMajorThorax",
-                         "BIC",
-                         "TRI",
-                         "LatissimusDorsi",
-                         'TrapeziusScapula_S',
-                         #'TrapeziusClavicle',
-                         "DeltoideusClavicle_A",
-                         'DeltoideusScapula_M',
-                          'DeltoideusScapula_P']
+                    emg_name = [
+                        "PectoralisMajorThorax",
+                        "BIC",
+                        "TRI",
+                        "LatissimusDorsi",
+                        "TrapeziusScapula_S",
+                        #'TrapeziusClavicle',
+                        "DeltoideusClavicle_A",
+                        "DeltoideusScapula_M",
+                        "DeltoideusScapula_P",
+                    ]
                     if part == "P11":
                         emg_name.pop(emg_name.index("LatissimusDorsi"))
                     configuration_dic = {
@@ -521,7 +531,7 @@ if __name__ == "__main__":
                         #               "DELT1",
                         #               'DELT2',
                         #               'DELT3']
-                        "emg_names" : emg_name
+                        "emg_names": emg_name,
                     }
                     variables_dic = {"print_lvl": 1}  # print level 0 = no print, 1 = print information
                     # try:
@@ -530,4 +540,4 @@ if __name__ == "__main__":
                     # except Exception as e:
                     #     print(e)
                     #     print("warning")
-                #break
+                # break

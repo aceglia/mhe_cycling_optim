@@ -5,52 +5,54 @@ import numpy as np
 import os
 import biorbd
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
-    muscle_names = ['TrapeziusScapula_M',  # 0
-                   'TrapeziusScapula_S',  # 1
-                   'TrapeziusScapula_I',  # 2
-                   'Rhomboideus_S',  # 3
-                   'Rhomboideus_I',  # 3
-                   'LevatorScapulae',  # 4
-                   'PectoralisMinor',  # 5
-                   'TrapeziusClavicle_S',  # 6
-                   'SerratusAnterior_I',  # 7
-                   'SerratusAnterior_M',  # 7
-                   'SerratusAnterior_S',  # 7
-                   'Coracobrachialis',  # 8
-                   'DeltoideusScapula_P',  # 9
-                   'DeltoideusScapula_M',  # 10
-                   'TeresMajor',  # 11
-                   'Infraspinatus_I',  # 12
-                   'Infraspinatus_S',  # 12
-                   'TeresMinor',  # 13
-                   'Subscapularis_S',  # 14
-                   'Subscapularis_M',  # 14
-                   'Subscapularis_I',  # 14
-                   'Supraspinatus_P',  # 15
-                   'Supraspinatus_A',  # 15
-                   'DeltoideusClavicle_A',  # 16
-                   'PectoralisMajorClavicle_S',  # 17
-                   'LatissimusDorsi_S',  # 18
-                   'LatissimusDorsi_M',  # 18
-                   'LatissimusDorsi_I',  # 18
-                   'PectoralisMajorThorax_I',  # 19
-                   'PectoralisMajorThorax_M',  # 19
-                   # "BRD",
-                   # "PT",
-                   # "PQ"
-                   'TRI_long',  # 20
-                   'TRI_lat',  # 20
-                   'TRI_med',  # 20
-                   'BIC_long',  # 21
-                   'BIC_brevis', ]  # 21
+    muscle_names = [
+        "TrapeziusScapula_M",  # 0
+        "TrapeziusScapula_S",  # 1
+        "TrapeziusScapula_I",  # 2
+        "Rhomboideus_S",  # 3
+        "Rhomboideus_I",  # 3
+        "LevatorScapulae",  # 4
+        "PectoralisMinor",  # 5
+        "TrapeziusClavicle_S",  # 6
+        "SerratusAnterior_I",  # 7
+        "SerratusAnterior_M",  # 7
+        "SerratusAnterior_S",  # 7
+        "Coracobrachialis",  # 8
+        "DeltoideusScapula_P",  # 9
+        "DeltoideusScapula_M",  # 10
+        "TeresMajor",  # 11
+        "Infraspinatus_I",  # 12
+        "Infraspinatus_S",  # 12
+        "TeresMinor",  # 13
+        "Subscapularis_S",  # 14
+        "Subscapularis_M",  # 14
+        "Subscapularis_I",  # 14
+        "Supraspinatus_P",  # 15
+        "Supraspinatus_A",  # 15
+        "DeltoideusClavicle_A",  # 16
+        "PectoralisMajorClavicle_S",  # 17
+        "LatissimusDorsi_S",  # 18
+        "LatissimusDorsi_M",  # 18
+        "LatissimusDorsi_I",  # 18
+        "PectoralisMajorThorax_I",  # 19
+        "PectoralisMajorThorax_M",  # 19
+        # "BRD",
+        # "PT",
+        # "PQ"
+        "TRI_long",  # 20
+        "TRI_lat",  # 20
+        "TRI_med",  # 20
+        "BIC_long",  # 21
+        "BIC_brevis",
+    ]  # 21
 
     participants = [f"P{i}" for i in range(10, 17)]
     # participants.pop(participants.index("P12"))
     # participants.pop(participants.index("P15"))
     # participants.pop(participants.index("P16"))
-    #participants = ["P10"]
+    # participants = ["P10"]
     prefix = "/mnt/shared/" if os.name == "posix" else "Q:/"
     model = f"{prefix}Projet_hand_bike_markerless/RGBD/P10/model_scaled_dlc_ribs_param.bioMod"
     model = biorbd.Model(model)
@@ -63,17 +65,17 @@ if __name__ == '__main__':
     result_dir = f"{prefix}Projet_hand_bike_markerless/optim_params/results"
 
     for cycle in n_cycles:
-        for p,  part in enumerate(participants):
+        for p, part in enumerate(participants):
             # param_path = f"{result_dir}/{part}/gear_20_n_cycles_{cycle}.bio"
-                # data_tmp = load(param_path, merge=False)
-                # plot_param(p_list, [name.to_string() for name in eigen_model.muscleNames()], self.params_to_optim,
-                #            self.param_bounds, 1)
-                # print("participant:", part, "cycle:", cycle, "\n")
-                # print([data_tmp[k]["solver_out"]["return_status"] for k in range(len(data_tmp))])
+            # data_tmp = load(param_path, merge=False)
+            # plot_param(p_list, [name.to_string() for name in eigen_model.muscleNames()], self.params_to_optim,
+            #            self.param_bounds, 1)
+            # print("participant:", part, "cycle:", cycle, "\n")
+            # print([data_tmp[k]["solver_out"]["return_status"] for k in range(len(data_tmp))])
             param_path = f"{result_dir}/{part}/gear_20_n_cycles_{cycle}.bio"
             data_tmp = load(param_path, merge=False)
             data_tmp = data_tmp[1]
-            all_params[p, 0, :], all_params[p, 1, :] = np.array(data_tmp["p"][0]),  np.array(data_tmp["p"][1])
+            all_params[p, 0, :], all_params[p, 1, :] = np.array(data_tmp["p"][0]), np.array(data_tmp["p"][1])
             # param_path_id = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_id_{node}_test.bio"
             # data_tmp_id = load(param_path_id)
             # all_params_id[p, 0, :], all_params_id[p, 1, :] = np.array(data_tmp_id["p"][0])[:, 0],  np.array(data_tmp_id["p"][1])[:, 0]
@@ -82,11 +84,12 @@ if __name__ == '__main__':
 
         import matplotlib.pyplot as plt
         import numpy as np
+
         fig_name = ["F_iso", "l_optim"]
         for p in range(2):
             # Example data (35 muscles and 8 participants)
-            participant_data = all_params[:, p, :].T # Replace this with your actual data
-            participant_data_id = all_params_id[:, p, :].T # Replace this with your actual data
+            participant_data = all_params[:, p, :].T  # Replace this with your actual data
+            participant_data_id = all_params_id[:, p, :].T  # Replace this with your actual data
 
             # Plotting
             plt.figure(fig_name[p])
@@ -108,7 +111,7 @@ if __name__ == '__main__':
             indices = np.linspace(0, len(muscle_names), len(muscle_names))
 
             # Generate a color map for the participants
-            colors = plt.cm.get_cmap('tab10', n_participants)
+            colors = plt.cm.get_cmap("tab10", n_participants)
 
             # Plot bars for participants
             count = 0
@@ -120,30 +123,30 @@ if __name__ == '__main__':
                 below_one_id = np.clip(participant_data_id[:, i] - 1, None, 0)  # Values below 1
 
                 # Plot above 1 values
-                plt.bar(indices + count, above_one, width=bar_width, label=f'Participant {i + 1}', color=colors(i))
-                #plt.bar(indices + count + bar_width, above_one_id, width=bar_width, label=f'Participant {i + 1}_id', color=colors(i), hatch="*")
+                plt.bar(indices + count, above_one, width=bar_width, label=f"Participant {i + 1}", color=colors(i))
+                # plt.bar(indices + count + bar_width, above_one_id, width=bar_width, label=f'Participant {i + 1}_id', color=colors(i), hatch="*")
 
                 # Plot below 1 values (in the negative direction)
                 plt.bar(indices + count, below_one, width=bar_width, color=colors(i))
-                #plt.bar(indices + count + bar_width, below_one_id, width=bar_width, color=colors(i), hatch="*")
-                count += (bar_width * 2)
+                # plt.bar(indices + count + bar_width, below_one_id, width=bar_width, color=colors(i), hatch="*")
+                count += bar_width * 2
 
             # Set x-ticks and labels
-            idxs = indices + (len(participants) * bar_width * 2)/2
+            idxs = indices + (len(participants) * bar_width * 2) / 2
             for m in range(len(muscle_names)):
-                plt.axvline(idxs[m], linestyle='--', alpha=0.2, c="k")
-            plt.xticks(indices + (len(participants) * bar_width * 2)/2, muscle_names, rotation=90)
-            y_ticks = np.arange(0.8-1, 1.8-1, 0.1)  # Define range for y-ticks
-            y_labels = [f'{1 + tick:.1f}' for tick in y_ticks]  # Create labels centered on 1
+                plt.axvline(idxs[m], linestyle="--", alpha=0.2, c="k")
+            plt.xticks(indices + (len(participants) * bar_width * 2) / 2, muscle_names, rotation=90)
+            y_ticks = np.arange(0.8 - 1, 1.8 - 1, 0.1)  # Define range for y-ticks
+            y_labels = [f"{1 + tick:.1f}" for tick in y_ticks]  # Create labels centered on 1
             plt.yticks(y_ticks, y_labels)
             # Center y-axis at 1
-            plt.axhline(y=0, color='black', linestyle='--')
-            plt.axhline(y=0.8, color='black', linestyle='--')
-            plt.axhline(y=-0.2, color='black', linestyle='--')
+            plt.axhline(y=0, color="black", linestyle="--")
+            plt.axhline(y=0.8, color="black", linestyle="--")
+            plt.axhline(y=-0.2, color="black", linestyle="--")
 
             # Labels and title
-            plt.ylabel('Deviation from 1')
-            plt.title('Bidirectional Plot of Optimized Parameters for Muscles Across Participants')
+            plt.ylabel("Deviation from 1")
+            plt.title("Bidirectional Plot of Optimized Parameters for Muscles Across Participants")
 
             # Add legend
             plt.legend()
@@ -151,4 +154,3 @@ if __name__ == '__main__':
             # Display the plot
             plt.tight_layout()
         plt.show()
-

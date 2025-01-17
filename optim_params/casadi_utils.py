@@ -1,6 +1,7 @@
 from casadi import MX, SX, evalf
 import numpy as np
 
+
 def convert_to_casadi(data, to_sx=False, to_array=False, to_mx=False):
     if to_array and to_sx and to_mx:
         raise ValueError("Cannot convert to multiple types at once")
@@ -11,7 +12,7 @@ def convert_to_casadi(data, to_sx=False, to_array=False, to_mx=False):
     if to_array:
         return np.array(evalf(data))
     elif to_sx:
-        return  SX(evalf(data))
+        return SX(evalf(data))
     elif to_mx:
         return MX(evalf(data))
 
@@ -25,7 +26,6 @@ class Symbolics:
         self.p = None
         self.pas_tau = None
         self.pas_tau_all = None
-
 
     def get(self, name):
         name = [name] if not isinstance(name, list) else name
@@ -72,6 +72,3 @@ class MxVariables:
     @staticmethod
     def to_mx(data):
         return MX(data)
-
-
-

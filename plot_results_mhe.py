@@ -23,13 +23,12 @@ def plot_results(data_path, model, key_to_plot, key_target=None, optim_param_pat
     # b.load_experimental_markers(dic_merged["kin_target"])
     # b.exec()
     biomodel = biorbd.Model(model)
-    dic_merged["dq_ref"] = dic_merged["x_ref"][biomodel.nbQ(): biomodel.nbQ() * 2, :]
+    dic_merged["dq_ref"] = dic_merged["x_ref"][biomodel.nbQ() : biomodel.nbQ() * 2, :]
     dic_merged["q_ref"] = dic_merged["x_ref"][: biomodel.nbQ(), :]
 
-    dic_merged["mus_tau"] = get_muscular_torque(kin,
-                                                dic_merged["u_est"],
-                                                biomodel,
-                                                parameters_file_path=optim_param_path)
+    dic_merged["mus_tau"] = get_muscular_torque(
+        kin, dic_merged["u_est"], biomodel, parameters_file_path=optim_param_path
+    )
     for k, key in enumerate(key_to_plot):
         if key not in dic_merged.keys():
             print(f"{key} not in data")
@@ -43,7 +42,7 @@ def plot_results(data_path, model, key_to_plot, key_target=None, optim_param_pat
             target = dic_merged[key_target[k]]
         plt.figure(key)
         for i in range(data_tmp.shape[0]):
-            plt.subplot(int(np.ceil(data_tmp.shape[0]/4)), 4, i+1)
+            plt.subplot(int(np.ceil(data_tmp.shape[0] / 4)), 4, i + 1)
             plt.plot(data_tmp[i, :], color=color)
             if target is not None:
                 plot_target(i, key_target[k], target, muscle_idx)
@@ -59,7 +58,7 @@ def plot_target(i, key_target, target, idx_muscle):
         plt.plot(target[i, :], color="r")
 
 
-def get_muscular_torque(x, act, model, parameters_file_path=None, with_casadi=False, ratio = True):
+def get_muscular_torque(x, act, model, parameters_file_path=None, with_casadi=False, ratio=True):
     """
     Get the muscular torque.
     """
@@ -113,15 +112,17 @@ def get_id_torque(q, q_dot, model=None, f_ext=None, rate=60):
     return tau_from_b
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     part = "P10"
-    participants = ["P10"] #, "P11", "P13", "P14"]
+    participants = ["P10"]  # , "P11", "P13", "P14"]
     trials = ["gear_20"]
     cycle = 5
     result_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/results"
     for trial in trials:
         suffix = "test_quad"
-        parameters_file_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{cycle}_{suffix}.bio"
+        parameters_file_path = (
+            f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{cycle}_{suffix}.bio"
+        )
         model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/output_models/{trial}_model_scaled_dlc_technical_marker_params_static_root.bioMod"
         file_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}"
         all_dir = os.listdir(file_dir)

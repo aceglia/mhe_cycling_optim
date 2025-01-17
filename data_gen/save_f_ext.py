@@ -4,11 +4,11 @@ from biosiglive import save, load
 import csv
 import os
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     model_path = "/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/results/wu_gauche_cycling_pos_scaled_3.bioMod"
     model = biorbd.Model(model_path)
     file_path = "/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/data_gen/saves/pedalage_3_proc.bio"
-    data =load(file_path)
+    data = load(file_path)
     q = load(file_path)["kalman"]
     external_forces = [[]]
     n_shooting = q.shape[1]
@@ -16,9 +16,10 @@ if __name__ == '__main__':
     n_debut = 5000
     n_fin = n_debut + n_shooting
     with open(
-            '/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/sandbox/pedalage/pedalage 3/Results-pedalage_3_001.lvm',
-            'r') as file:
-        reader = csv.reader(file, delimiter='\t')
+        "/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/sandbox/pedalage/pedalage 3/Results-pedalage_3_001.lvm",
+        "r",
+    ) as file:
+        reader = csv.reader(file, delimiter="\t")
         for row in reader:
             row_bis = [float(i) for i in row]
             datas.append(row_bis)
@@ -39,18 +40,20 @@ if __name__ == '__main__':
 
         A = np.dot(A, RT)
         B = np.dot(B, RT2)
-        vecteur_AB = A[:3]-B[:3]
+        vecteur_AB = A[:3] - B[:3]
         # force = [6000, 6000, 6000]
         force = np.array([force_x[i], force_y[i], force_z[i]]).T
         moment_initial = np.array([moment_x[i], moment_y[i], moment_z[i]]).T
         moment_initial_2 = moment_initial + np.cross(vecteur_AB, force)
         moment_final = moment_initial_2 + np.cross(B[:3], force)
-        external_forces_calc = np.array([moment_final[0], moment_final[1], moment_final[2], force[0], force[1], force[2]])[:, np.newaxis]
+        external_forces_calc = np.array(
+            [moment_final[0], moment_final[1], moment_final[2], force[0], force[1], force[2]]
+        )[:, np.newaxis]
         external_forces[0].append(external_forces_calc)
 
     external_forces = np.array(external_forces)
 
     data["f_ext"] = external_forces[:, :, :, 0]
     if os.path.isfile(file_path):
-                os.remove(file_path)
+        os.remove(file_path)
     save(data, file_path)

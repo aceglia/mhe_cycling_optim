@@ -91,9 +91,13 @@ def map_activation(emg_proc, muscle_track_idx, model, emg_names, emg_init=None, 
     return act
 
 
-def interpolate_data(interp_factor: int, x_ref: np.ndarray, muscles_target: np.ndarray, markers_target: np.ndarray,
-                     f_ext_target: np.ndarray
-                     ):
+def interpolate_data(
+    interp_factor: int,
+    x_ref: np.ndarray,
+    muscles_target: np.ndarray,
+    markers_target: np.ndarray,
+    f_ext_target: np.ndarray,
+):
     """
     Interpolate the reference and target data.
 
@@ -153,8 +157,7 @@ def reorder_markers(markers, model, names):
         if names[i] == "elb":
             names[i] = "elbow"
         if _convert_string(names[i]) in model_marker_names:
-            reordered_markers[:, model_marker_names.index(_convert_string(names[i])),
-            :] = markers[:, count, :]
+            reordered_markers[:, model_marker_names.index(_convert_string(names[i])), :] = markers[:, count, :]
             count += 1
     return reordered_markers
 
@@ -196,7 +199,11 @@ def get_data(ip=None, port=None, message=None, offline=False, offline_file_path=
     else:
         mat = load(offline_file_path)
         try:
-            x_ref, markers, muscles = mat["kalman"][:, n_init:nfinal], mat["kin_target"][:, :, n_init:nfinal], mat["muscles_target"][:, n_init:nfinal]
+            x_ref, markers, muscles = (
+                mat["kalman"][:, n_init:nfinal],
+                mat["kin_target"][:, :, n_init:nfinal],
+                mat["muscles_target"][:, n_init:nfinal],
+            )
         except:
             x_ref, markers, muscles = (
                 mat["kalman"][:, n_init:nfinal],
@@ -208,7 +215,7 @@ def get_data(ip=None, port=None, message=None, offline=False, offline_file_path=
 
 def apply_params(model, file_path=None, params=None, optimized_params=None, with_casadi=True, ratio=True):
     if file_path:
-        data = load(file_path, merge=False)[0] # [4]
+        data = load(file_path, merge=False)[0]  # [4]
         param_list = data["p"]
         params_to_optim = data["optimized_params"]
     elif params is not None:
@@ -222,29 +229,41 @@ def apply_params(model, file_path=None, params=None, optimized_params=None, with
         if "f_iso" in params_to_optim:
             f_init = model.muscle(k).characteristics().forceIsoMax()
             f_init = f_init.to_mx() if with_casadi else float(f_init)
-            param_tmp = MX(param_list[params_to_optim.index("f_iso")][k]) if with_casadi else float(
-                param_list[params_to_optim.index("f_iso")][k])
+            param_tmp = (
+                MX(param_list[params_to_optim.index("f_iso")][k])
+                if with_casadi
+                else float(param_list[params_to_optim.index("f_iso")][k])
+            )
             param_tmp = param_tmp if with_casadi else float(param_tmp)
             model.muscle(k).characteristics().setForceIsoMax(f_init * param_tmp)
         if "lm_optim" in params_to_optim:
             l_init = model.muscle(k).characteristics().optimalLength()
             l_init = l_init.to_mx() if with_casadi else float(l_init)
-            param_tmp = MX(param_list[params_to_optim.index("lm_optim")][k]) if with_casadi else float(
-                param_list[params_to_optim.index("lm_optim")][k])
+            param_tmp = (
+                MX(param_list[params_to_optim.index("lm_optim")][k])
+                if with_casadi
+                else float(param_list[params_to_optim.index("lm_optim")][k])
+            )
             param_tmp = param_tmp if with_casadi else float(param_tmp)
             model.muscle(k).characteristics().setOptimalLength(l_init * param_tmp)
             if ratio and "lt_slack" not in params_to_optim:
                 lt_slack = model.muscle(k).characteristics().tendonSlackLength()
                 lt_slack = lt_slack.to_mx() if with_casadi else float(lt_slack)
                 ratio_tmp = lt_slack / l_init
-                opt_l = model.muscle(k).characteristics().optimalLength().to_mx() if with_casadi else float(
-                    model.muscle(k).characteristics().optimalLength())
+                opt_l = (
+                    model.muscle(k).characteristics().optimalLength().to_mx()
+                    if with_casadi
+                    else float(model.muscle(k).characteristics().optimalLength())
+                )
                 model.muscle(k).characteristics().setTendonSlackLength(opt_l * ratio_tmp)
         if "lt_slack" in params_to_optim:
             l_init = model.muscle(k).characteristics().tendonSlackLength()
             l_init = l_init.to_mx() if with_casadi else float(l_init)
-            param_tmp = MX(param_list[params_to_optim.index("lt_slack")][k]) if with_casadi else float(
-                param_list[params_to_optim.index("lt_slack")][k])
+            param_tmp = (
+                MX(param_list[params_to_optim.index("lt_slack")][k])
+                if with_casadi
+                else float(param_list[params_to_optim.index("lt_slack")][k])
+            )
             param_tmp = param_tmp if with_casadi else float(param_tmp)
             model.muscle(k).characteristics().setTendonSlackLength(l_init * param_tmp)
     return model
@@ -259,28 +278,41 @@ def load_mhe_results(data_path, n_frame_to_export):
             if data[i][key] is None:
                 data_merged[key] = None
                 continue
-            data_merged[key] = data[i][key][..., n_frame_to_export:n_frame_to_export + 1] if i == 0 else np.append(
-                data_merged[key], data[i][key][..., n_frame_to_export:n_frame_to_export + 1], axis=-1)
+            data_merged[key] = (
+                data[i][key][..., n_frame_to_export : n_frame_to_export + 1]
+                if i == 0
+                else np.append(data_merged[key], data[i][key][..., n_frame_to_export : n_frame_to_export + 1], axis=-1)
+            )
     return data_merged
 
 
-def load_data(data_path, filter_depth, model, muscle_track_idx, emg_names, part,  source="depth", interp_factor=1, n_init=0, n_final=None):
+def load_data(
+    data_path,
+    filter_depth,
+    model,
+    muscle_track_idx,
+    emg_names,
+    part,
+    source="depth",
+    interp_factor=1,
+    n_init=0,
+    n_final=None,
+):
     data = load(data_path)
-    f_ext = data["shared"]["f_ext"][..., :data["vicon"]["q"].shape[-1]]
+    f_ext = data["shared"]["f_ext"][..., : data["vicon"]["q"].shape[-1]]
     names_from_source = data[source][f"marker_names"]
     markers = data[source][f"markers"]
     # markers_tmp = markers.copy()
     # markers[:, 6, :] = markers_tmp[:, 7, :]
     # markers[:, 7, :] = markers_tmp[:, 6, :]
 
-    #markers[:, 6, :], markers[:, 7, :] = markers[:, 7, :], markers[:, 6, :]
+    # markers[:, 6, :], markers[:, 7, :] = markers[:, 7, :], markers[:, 6, :]
 
-    emg = data["shared"]["emg"][..., :data["vicon"]["q"].shape[-1]]
+    emg = data["shared"]["emg"][..., : data["vicon"]["q"].shape[-1]]
     if isinstance(data["shared"]["emg"], np.ndarray):
         muscles_target = map_activation(
-            emg_proc=emg, muscle_track_idx=muscle_track_idx,
-            model=model,
-            emg_names=emg_names)
+            emg_proc=emg, muscle_track_idx=muscle_track_idx, model=model, emg_names=emg_names
+        )
     else:
         muscles_target = np.zeros((model.nbMuscles(), markers.shape[2]))
     if model.nbQ() != data[source]["q"].shape[0]:
@@ -293,10 +325,13 @@ def load_data(data_path, filter_depth, model, muscle_track_idx, emg_names, part,
     markers_target = markers[:, :, n_init:n_final]
     muscles_target = muscles_target[:, n_init:n_final]
     f_ext = f_ext[:, n_init:n_final]
-    offline_data = [x_ref.copy(),
-                    markers_target.copy(), muscles_target.copy(), f_ext.copy()]
+    offline_data = [x_ref.copy(), markers_target.copy(), muscles_target.copy(), f_ext.copy()]
     x_ref, markers_target, muscles_target, f_ext = interpolate_data(
-        interp_factor, x_ref, muscles_target, markers_target, f_ext,
+        interp_factor,
+        x_ref,
+        muscles_target,
+        markers_target,
+        f_ext,
     )
     # import bioviz
     # b = bioviz.Viz(loaded_model=model)
@@ -305,10 +340,14 @@ def load_data(data_path, filter_depth, model, muscle_track_idx, emg_names, part,
     # b.exec()
     return offline_data, markers_target, names_from_source, f_ext, muscles_target, x_ref
 
+
 def get_ratio(model, use_casadi=True):
-    ratio = [model.muscle(k).characteristics().tendonSlackLength() / model.muscle(
-        k).characteristics().optimalLength() for k in range(model.nbMuscles())]
+    ratio = [
+        model.muscle(k).characteristics().tendonSlackLength() / model.muscle(k).characteristics().optimalLength()
+        for k in range(model.nbMuscles())
+    ]
     return ratio
+
 
 def get_tracking_idx(model, emg_names):
     muscle_list = []

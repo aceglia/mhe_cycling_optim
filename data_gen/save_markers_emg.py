@@ -19,9 +19,7 @@ def save_results(sol, c3d_file_path):
     c3d_file_path: str
         The path to the c3d file of the task
     """
-    data = dict(
-        values=sol.values
-    )
+    data = dict(values=sol.values)
     with open(f"{c3d_file_path}", "wb") as file:
         pickle.dump(data, file)
 
@@ -39,11 +37,11 @@ def get_created_data_from_pickle(file: str):
 
 
 def compute_mvc(
-        nb_muscles: int,
-        mvc_trials: np.ndarray,
-        window_size: int,
+    nb_muscles: int,
+    mvc_trials: np.ndarray,
+    window_size: int,
 ) -> list:
-    """    Compute MVC from several mvc_trials.
+    """Compute MVC from several mvc_trials.
 
     Parameters
     ----------
@@ -79,7 +77,6 @@ def compute_mvc(
     return mvc_list_max
 
 
-
 # datas = Markers.from_c3d("/home/lim/Documents/Stage_Antoine/Antoine_Leroy/fichier_c3d/pedalage_1.c3d", usecols=['STER', 'XIPH', 'C7', 'T10', 'CLAV_SC', 'CLAV_AC', 'Acrom', 'SCAP_AA', 'SCAp_IA', 'DELT', 'EPIC_L', 'EPIC_M', 'ARMl', 'LARM_Elb', 'STYL_R', 'STYL_u', 'hand1', 'hand2', 'hand3', 'hand4'])
 # # print(datas)
 #
@@ -87,9 +84,60 @@ def compute_mvc(
 #
 # print(EMG)
 
-channel_1 = ['subscap.IM EMG1', 'infraspin.IM EMG2', 'supspin.IM EMG3', 'pecmaj.IM EMG4', 'trap_sup.IM EMG5', 'Trap_med.IM EMG6', 'trap_inf.IM EMG7', 'bic.IM EMG8', 'tri.IM EMG9', 'lat.IM EMG10', 'delt_ant.IM EMG11', 'delt_med.IM EMG12', 'delt_post.IM EMG13', 'Pec_2.IM EMG14']
-channel_2 = ['Sensor 1.IM EMG1', 'Sensor 2.IM EMG2', 'Sensor 3.IM EMG3', 'Sensor 4.IM EMG4', 'Sensor 5.IM EMG5', 'Sensor 6.IM EMG6', 'Sensor 7.IM EMG7', 'Sensor 8.IM EMG8', 'Sensor 9.IM EMG9', 'Sensor 10.IM EMG10', 'Sensor 11.IM EMG11', 'Sensor 12.IM EMG12', 'Sensor 13.IM EMG13', 'Sensor 14.IM EMG14']
-channel_3 = ['STER', 'XIPH', 'C7', 'T10', 'CLAV_SC', 'CLAV_AC', 'Acrom', 'SCAP_AA', 'SCAp_IA', 'DELT', 'EPIC_L', 'EPIC_M', 'ARMl', 'LARM_Elb', 'STYL_R', 'STYL_u', 'hand1', 'hand2', 'hand3', 'hand4']
+channel_1 = [
+    "subscap.IM EMG1",
+    "infraspin.IM EMG2",
+    "supspin.IM EMG3",
+    "pecmaj.IM EMG4",
+    "trap_sup.IM EMG5",
+    "Trap_med.IM EMG6",
+    "trap_inf.IM EMG7",
+    "bic.IM EMG8",
+    "tri.IM EMG9",
+    "lat.IM EMG10",
+    "delt_ant.IM EMG11",
+    "delt_med.IM EMG12",
+    "delt_post.IM EMG13",
+    "Pec_2.IM EMG14",
+]
+channel_2 = [
+    "Sensor 1.IM EMG1",
+    "Sensor 2.IM EMG2",
+    "Sensor 3.IM EMG3",
+    "Sensor 4.IM EMG4",
+    "Sensor 5.IM EMG5",
+    "Sensor 6.IM EMG6",
+    "Sensor 7.IM EMG7",
+    "Sensor 8.IM EMG8",
+    "Sensor 9.IM EMG9",
+    "Sensor 10.IM EMG10",
+    "Sensor 11.IM EMG11",
+    "Sensor 12.IM EMG12",
+    "Sensor 13.IM EMG13",
+    "Sensor 14.IM EMG14",
+]
+channel_3 = [
+    "STER",
+    "XIPH",
+    "C7",
+    "T10",
+    "CLAV_SC",
+    "CLAV_AC",
+    "Acrom",
+    "SCAP_AA",
+    "SCAp_IA",
+    "DELT",
+    "EPIC_L",
+    "EPIC_M",
+    "ARMl",
+    "LARM_Elb",
+    "STYL_R",
+    "STYL_u",
+    "hand1",
+    "hand2",
+    "hand3",
+    "hand4",
+]
 
 emg_proc = []
 nb_muscles = 14
@@ -115,24 +163,25 @@ mvc_windows = 2000
 mvc_list_max = np.ndarray((nb_muscles, mvc_windows))
 output_file = "mvc.mat"
 mvc = compute_mvc(nb_muscles, emg_proc, mvc_windows)
-file = "/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/data_gen/fichier_c3d/pedalage_4.c3d"
+file = (
+    "/home/lim/Documents/Stage_Antoine/Antoine_Leroy/Optimization/mhe_cycling_optim/data_gen/fichier_c3d/pedalage_4.c3d"
+)
 datas_markers = Markers.from_c3d(file, usecols=channel_3).values
-datas_markers = datas_markers[:3, :16, :]*0.001
+datas_markers = datas_markers[:3, :16, :] * 0.001
 idx = np.argwhere(np.isnan(datas_markers))
 for i in range(idx.shape[0]):
     idx_coordonnees = idx[i][0]
     idx_marker = idx[i][1]
     idx_nan = idx[i][2]
-    datas_markers[idx_coordonnees, idx_marker, idx_nan] = datas_markers[
-        idx_coordonnees, idx_marker, idx_nan - 1]
+    datas_markers[idx_coordonnees, idx_marker, idx_nan] = datas_markers[idx_coordonnees, idx_marker, idx_nan - 1]
 
 emg_pedalage = Analogs.from_c3d(file, usecols=channel_1)
 emg_processed_2 = (
-        emg_pedalage.meca.band_pass(order=2, cutoff=[10, 425])
-        .meca.center()
-        .meca.abs()
-        .meca.low_pass(order=4, cutoff=5, freq=emg_pedalage.rate)
-    )
+    emg_pedalage.meca.band_pass(order=2, cutoff=[10, 425])
+    .meca.center()
+    .meca.abs()
+    .meca.low_pass(order=4, cutoff=5, freq=emg_pedalage.rate)
+)
 emg_processed_2 = emg_processed_2[:, ::20]
 
 for i in range(len(emg_processed_2[1])):

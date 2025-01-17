@@ -3,6 +3,7 @@ import os
 from optim_params.identification_utils import process_cycles, generate_random_idx
 import numpy as np
 from scipy.signal import find_peaks
+
 try:
     from bioptim import SolutionMerge
 except:
@@ -11,18 +12,20 @@ import matplotlib.pyplot as plt
 import bioviz
 
 
-def get_data_dict(file_path, n_cycles=1, batch_size=1, rate=120, cycle_size=60, from_id=False,  em_delay=0,
-                  end_idx=None):
+def get_data_dict(
+    file_path, n_cycles=1, batch_size=1, rate=120, cycle_size=60, from_id=False, em_delay=0, end_idx=None
+):
 
     suffix = "_ocp" if not from_id else "_id"
     ocp_result = load(file_path)
+    part = file_path.split("/")[6]
     peaks = find_peaks(ocp_result["q" + suffix][-2, :], height=0.2, distance=100)[0]
     end_idx = end_idx if end_idx is not None else ocp_result["q" + suffix].shape[1]
     # model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
-    # model = model_dir + f"/P11/output_models/gear_20_model_scaled_dlc_technical_marker_params.bioMod"
+    # model = model_dir + f"{part}/output_models/gear_20_model_scaled_dlc_technical_marker_params.bioMod"
     # b = bioviz.Viz(model_path=model)
     # b.load_movement(ocp_result["q" + suffix])
-    # b.load_experimental_markers(ocp_result["markers_target"][..., :5000])
+    # b.load_experimental_markers(ocp_result["markers_target"][..., :2000])
     # b.exec()
     # plt.figure("q")
     # for i in range(ocp_result["q" + suffix].shape[0]):
@@ -45,11 +48,17 @@ def get_data_dict(file_path, n_cycles=1, batch_size=1, rate=120, cycle_size=60, 
             if "q" in key or "q_dot" in key or "tau" in key or "f_ext" in key:
                 ocp_result[key] = ocp_result[key][:, em_delay_frame:end_idx]
             if "emg" in key:
-                ocp_result[key] = ocp_result[key][:, :-em_delay_frame] if em_delay != 0 else ocp_result[key][..., :end_idx]
+                ocp_result[key] = (
+                    ocp_result[key][:, :-em_delay_frame] if em_delay != 0 else ocp_result[key][..., :end_idx]
+                )
     ocp_result = process_cycles(ocp_result, peaks, interpolation_size=cycle_size, remove_outliers=False)
-    q, qdot, tau, f_ext, emg = (ocp_result["cycles"]["q" + suffix], ocp_result["cycles"]["q_dot" + suffix],
-                                     ocp_result["cycles"]["tau" + suffix], ocp_result["cycles"]["f_ext"],
-                                     ocp_result["cycles"]["emg"])
+    q, qdot, tau, f_ext, emg = (
+        ocp_result["cycles"]["q" + suffix],
+        ocp_result["cycles"]["q_dot" + suffix],
+        ocp_result["cycles"]["tau" + suffix],
+        ocp_result["cycles"]["f_ext"],
+        ocp_result["cycles"]["emg"],
+    )
     if n_cycles > q.shape[0] - 1:
         raise ValueError("The number of selected cycles should be less than the number of total cycles")
     random_idx_list = generate_random_idx(n_cycles, batch_size, q.shape[0])
@@ -102,11 +111,16 @@ def get_all_file(participants, data_dir, trial_names=None, to_include=(), to_exc
             continue
         if trial_names:
             to_include += trial_names[p] if isinstance(trial_names[p], list) else trial_names
-        all_files = [file for file in all_files if any([ext in file for ext in to_include]) and not any([ext in file for ext in to_exclude])]
+        all_files = [
+            file
+            for file in all_files
+            if any([ext in file for ext in to_include]) and not any([ext in file for ext in to_exclude])
+        ]
         final_files = [f"{data_dir}{os.sep}{part}{os.sep}{file}" for file in all_files]
         parts.append([part for _ in final_files])
         all_path.append(final_files)
     return sum(all_path, []), sum(parts, [])
+
 
 def save_iteration(f_ext, markers, q_to_track, q_dot_to_track, sol, t, file_path):
     merged_states = sol.decision_states(to_merge=SolutionMerge.NODES)
@@ -127,28 +141,29 @@ def save_torque_estimation(file_path, torque_estimation):
     :param torque_estimation:
     :return:
     """
-    empty_dict = {"q_ocp": merged_states["q"],
-                "qdot_ocp": merged_states["qdot"],
-                "tau_ocp": merged_controls["tau"],
-                "q_init": kalman_data[source]["q_raw"][:, n_start:n_stop][..., ::2][:, : - (n_shooting + 1)],
-                "qdot_init": kalman_data[source]["q_dot"][:, n_start:n_stop][..., ::2][:, : - (n_shooting + 1)],
-                # "tau_init": kalman_data[source]["tau"][:, n_start:n_stop - (n_shooting + 1)],
-                "q_id": q_id[:, :- (n_shooting)],
-                "qdot_id": q_dot_id[:, :- (n_shooting)],
-                "qddot_id": q_ddot_id[:, :- (n_shooting)],
-                "tau_id": tau_id[:, :- (n_shooting)],
-                "markers": markers_init[:, :, :-(n_shooting + 1)],
-                "emg": kalman_data["emg"][:, n_start:n_stop][..., ::2][:, :- (n_shooting + 1)],
-                "peaks": peaks,
-                "use_mhe": with_mhe,
-                "n_shooting": n_shooting,
-                "ocp_time": final_time,
-                "n_start": n_start,
-                "n_stop": n_stop,
-                "f_ext": None,
-                "total_time_mhe": time.time() - tic,
-                }
+    empty_dict = {
+        "q_ocp": merged_states["q"],
+        "qdot_ocp": merged_states["qdot"],
+        "tau_ocp": merged_controls["tau"],
+        "q_init": kalman_data[source]["q_raw"][:, n_start:n_stop][..., ::2][:, : -(n_shooting + 1)],
+        "qdot_init": kalman_data[source]["q_dot"][:, n_start:n_stop][..., ::2][:, : -(n_shooting + 1)],
+        # "tau_init": kalman_data[source]["tau"][:, n_start:n_stop - (n_shooting + 1)],
+        "q_id": q_id[:, :-(n_shooting)],
+        "qdot_id": q_dot_id[:, :-(n_shooting)],
+        "qddot_id": q_ddot_id[:, :-(n_shooting)],
+        "tau_id": tau_id[:, :-(n_shooting)],
+        "markers": markers_init[:, :, : -(n_shooting + 1)],
+        "emg": kalman_data["emg"][:, n_start:n_stop][..., ::2][:, : -(n_shooting + 1)],
+        "peaks": peaks,
+        "use_mhe": with_mhe,
+        "n_shooting": n_shooting,
+        "ocp_time": final_time,
+        "n_start": n_start,
+        "n_stop": n_stop,
+        "f_ext": None,
+        "total_time_mhe": time.time() - tic,
+    }
 
     if with_f_ext:
         save_dic["f_ext_ocp"] = merged_controls["f_ext"]
-        save_dic["init_f_ext"] = f_ext[:, :-(n_shooting + 1)]
+        save_dic["init_f_ext"] = f_ext[:, : -(n_shooting + 1)]

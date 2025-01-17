@@ -4,6 +4,7 @@ This is a basic example on how to use muscle driven to perform an optimal reachi
 The arm must reach a marker while minimizing the muscles activity and the states. The problem is solved using both
 ACADOS and Ipopt.
 """
+
 import os
 
 import matplotlib.pyplot as plt
@@ -16,7 +17,8 @@ import biorbd_casadi as biorbd_ca
 import itertools
 from scipy.interpolate import interp1d
 from scipy.odr import quadratic
-#from mhe.utils import _update_params
+
+# from mhe.utils import _update_params
 from biosiglive import OfflineProcessing
 import casadi as ca
 import bioptim
@@ -51,10 +53,10 @@ def compute_tau_from_muscle(model, q, qdot, muscles_act, params):
 
 
 def muscles_driven(
-        states: MX.sym,
-        controls: MX.sym,
-        parameters: MX.sym,
-        nlp,
+    states: MX.sym,
+    controls: MX.sym,
+    parameters: MX.sym,
+    nlp,
 ):
     """
     Forward dynamics driven by muscle.
@@ -104,20 +106,20 @@ def muscles_driven(
 
 
 def custom_torque_driven(
-        time: MX,
-        states: MX,
-        controls: MX,
-        parameters: MX,
-        stochastic_variables: MX,
-        nlp: NonLinearProgram,
-        # with_f_ext: bool = False
+    time: MX,
+    states: MX,
+    controls: MX,
+    parameters: MX,
+    stochastic_variables: MX,
+    nlp: NonLinearProgram,
+    # with_f_ext: bool = False
 ):
     # DynamicsFunctions.apply_parameters(parameters, nlp)
     q = DynamicsFunctions.get(nlp.states["q"], states)
     qdot = DynamicsFunctions.get(nlp.states["qdot"], states)
     tau = DynamicsFunctions.get(nlp.controls["tau"], controls)
-    #tau += nlp.model.passive_joint_torque(q, qdot)
-    #tau[3] += 1 * exp(-10*q[3] + 2)
+    # tau += nlp.model.passive_joint_torque(q, qdot)
+    # tau[3] += 1 * exp(-10*q[3] + 2)
     # tau[:6] = MX(0)
     dq = DynamicsFunctions.compute_qdot(nlp, q, qdot)
     # if with_f_ext:
@@ -138,6 +140,7 @@ def custom_torque_driven(
     # force_global[:3] = f_ext[:3, 0] + cross(vecteur_BA, f_ext[3:6, 0])
     # force_global[3:] = f_ext[3:, 0]
     from casadi import cross
+
     f_ext = DynamicsFunctions.get(nlp.controls["f_ext"], controls)
     B = [0, 0, 0, 1]
     all_jcs = nlp.model.model.allGlobalJCS(q)
@@ -147,7 +150,7 @@ def custom_torque_driven(
     vecteur_OB = B[:3]
     f_ext[:3] = f_ext[:3] + cross(vecteur_OB, f_ext[3:6])
     # force_global = change_ref_for_global(ind_1, q, model, force_locale)
-    #ddq = nlp.model.forward_dynamics(q, qdot, tau, force_global)
+    # ddq = nlp.model.forward_dynamics(q, qdot, tau, force_global)
     ext = nlp.model.model.externalForceSet()
     ext.add("hand_left", f_ext)
     ddq = nlp.model.model.ForwardDynamics(q, qdot, tau, ext).to_mx()
@@ -181,32 +184,44 @@ def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):  # , wi
     ConfigureProblem.configure_tau(ocp, nlp, as_states=False, as_controls=True)
     # if with_f_ext:
     # ConfigureProblem.configure_f_ext(ocp, nlp, as_states=True, as_controls=False)
-    ConfigureProblem.configure_new_variable("f_ext", ["mx", "my", "mz", "fx", "fy", "fz"],
-                                            ocp, nlp, as_states=False, as_controls=True)
+    ConfigureProblem.configure_new_variable(
+        "f_ext", ["mx", "my", "mz", "fx", "fy", "fz"], ocp, nlp, as_states=False, as_controls=True
+    )
     # ConfigureProblem.configure_muscles(ocp, nlp, as_states=False, as_controls=True)
     ConfigureProblem.configure_dynamics_function(ocp, nlp, custom_torque_driven)  # , with_f_ext=with_f_ext)
 
+
 def custom_func_min_len(controller) -> MX:
-    #all_len = len_fct(controller.model.model, controller.q.cx)
+    # all_len = len_fct(controller.model.model, controller.q.cx)
     len = controller.mx_to_cx("len", controller.model.muscle_length, controller.q)
     return len
+
 
 def modify_isometric_force(biorbd_model, value, fiso_init):
     for k in range(biorbd_model.nb_muscles):
         biorbd_model.muscle(k).characteristics().setForceIsoMax(value[k] * fiso_init[k])
 
 
-def prepare_ocp(biorbd_model_path, final_time, n_shooting,
-                # params,
-                x_warm=None, use_sx=False, n_threads=1,
-                mhe=False, param_bounds=None, target=None, i=None,
-                with_muscle=False,
-                q_init=None,
-                param=None,
-                pas_tau=None,
-                with_f_ext=False,
-                f_ext=None,
-                track_previous=False):
+def prepare_ocp(
+    biorbd_model_path,
+    final_time,
+    n_shooting,
+    # params,
+    x_warm=None,
+    use_sx=False,
+    n_threads=1,
+    mhe=False,
+    param_bounds=None,
+    target=None,
+    i=None,
+    with_muscle=False,
+    q_init=None,
+    param=None,
+    pas_tau=None,
+    with_f_ext=False,
+    f_ext=None,
+    track_previous=False,
+):
     # --- Options --- #
     # BioModel path
     bio_model = BiorbdModel(biorbd_model_path)
@@ -223,57 +238,111 @@ def prepare_ocp(biorbd_model_path, final_time, n_shooting,
     # Add objective functions
     objective_functions = ObjectiveList()
 
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot", weight=1000, multi_thread=False,
-                            index=list(range(abs(10 - bio_model.nb_q), bio_model.nb_q)), derivative=False)
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+        key="qdot",
+        weight=1000,
+        multi_thread=False,
+        index=list(range(abs(10 - bio_model.nb_q), bio_model.nb_q)),
+        derivative=False,
+    )
 
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=100, multi_thread=False,
-                            index=list(range(abs(10 - bio_model.nb_q), bio_model.nb_q)))
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_CONTROL,
+        key="tau",
+        weight=100,
+        multi_thread=False,
+        index=list(range(abs(10 - bio_model.nb_q), bio_model.nb_q)),
+    )
     if with_f_ext:
-        objective_functions.add(ObjectiveFcn.Lagrange.TRACK_CONTROL, key="f_ext", weight=1000000000,
-                                target=f_ext[:, :n_shooting], node=Node.ALL_SHOOTING, multi_thread=False)
+        objective_functions.add(
+            ObjectiveFcn.Lagrange.TRACK_CONTROL,
+            key="f_ext",
+            weight=1000000000,
+            target=f_ext[:, :n_shooting],
+            node=Node.ALL_SHOOTING,
+            multi_thread=False,
+        )
 
-    objective_functions.add(ObjectiveFcn.Lagrange.TRACK_MARKERS, weight=100000000,
-                            target=target[:, :3, :n_shooting + 1],
-                            node=Node.ALL, multi_thread=False,
-                            marker_index=list(range(3)))
-    objective_functions.add(ObjectiveFcn.Lagrange.TRACK_MARKERS, weight=100000000,
-                            target=target[:, 3:, :n_shooting + 1],
-                            node=Node.ALL, multi_thread=False,
-                            marker_index=list(range(3, bio_model.nb_markers)))
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.TRACK_MARKERS,
+        weight=100000000,
+        target=target[:, :3, : n_shooting + 1],
+        node=Node.ALL,
+        multi_thread=False,
+        marker_index=list(range(3)),
+    )
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.TRACK_MARKERS,
+        weight=100000000,
+        target=target[:, 3:, : n_shooting + 1],
+        node=Node.ALL,
+        multi_thread=False,
+        marker_index=list(range(3, bio_model.nb_markers)),
+    )
     # objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=1, multi_thread=False,
     #                         index=list(range(6))
     #                         )
     # objective_functions.add(ObjectiveFcn.Lagrange.TRACK_STATE, key="q", weight=10000000, target=q_init[: bio_model.nb_q, :n_shooting+1],
     #                         node=Node.ALL, multi_thread=False)
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=100, multi_thread=False,
-                            index=list(range(abs(10 - bio_model.nb_q), bio_model.nb_q)))
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+        key="q",
+        weight=100,
+        multi_thread=False,
+        index=list(range(abs(10 - bio_model.nb_q), bio_model.nb_q)),
+    )
 
     # objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=100, multi_thread=False,
     #                         index=[3])
     if track_previous:
-        objective_functions.add(ObjectiveFcn.Lagrange.TRACK_STATE, key="q", weight=10,
-                                target=q_init[: bio_model.nb_q, :n_shooting + 1],
-                                node=Node.ALL, multi_thread=False)
-        objective_functions.add(ObjectiveFcn.Lagrange.TRACK_STATE, key="qdot", weight=1000,
-                                target=q_init[bio_model.nb_q: bio_model.nb_q * 2, :n_shooting + 1],
-                                node=Node.ALL, multi_thread=False)
+        objective_functions.add(
+            ObjectiveFcn.Lagrange.TRACK_STATE,
+            key="q",
+            weight=10,
+            target=q_init[: bio_model.nb_q, : n_shooting + 1],
+            node=Node.ALL,
+            multi_thread=False,
+        )
+        objective_functions.add(
+            ObjectiveFcn.Lagrange.TRACK_STATE,
+            key="qdot",
+            weight=1000,
+            target=q_init[bio_model.nb_q : bio_model.nb_q * 2, : n_shooting + 1],
+            node=Node.ALL,
+            multi_thread=False,
+        )
     if with_muscle:
-        objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="muscles", weight=100000,
-                                multi_thread=False)
+        objective_functions.add(
+            ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="muscles", weight=100000, multi_thread=False
+        )
 
     if bio_model.nb_q > 10:
-    #     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=10, multi_thread=False,
-    #                             index=list(range(abs(10 - bio_model.nb_q))))
-    #     # if bio_model.nb_tau != q_init.shape[0] - bio_model.nb_q:
-        objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=1000, multi_thread=False,
-                                 index=list(range(4, 5)), quadratic=False)
+        #     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=10, multi_thread=False,
+        #                             index=list(range(abs(10 - bio_model.nb_q))))
+        #     # if bio_model.nb_tau != q_init.shape[0] - bio_model.nb_q:
+        objective_functions.add(
+            ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+            key="q",
+            weight=1000,
+            multi_thread=False,
+            index=list(range(4, 5)),
+            quadratic=False,
+        )
 
-    #objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=1000, multi_thread=False,
+    # objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=1000, multi_thread=False,
     #                        index=list(range(2, 5)), quadratic=False)
     # objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=100, multi_thread=False,
     #                         index=list(range(0, 1)), quadratic=False)
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot", weight=1000, multi_thread=False,
-                            index=list(range(9, 10)), quadratic=True, derivative=False)
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+        key="qdot",
+        weight=1000,
+        multi_thread=False,
+        index=list(range(9, 10)),
+        quadratic=True,
+        derivative=False,
+    )
     #     objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot", weight=1000, multi_thread=False,
     #                             index=list(range(abs(10 - bio_model.nb_q))))
 
@@ -302,10 +371,12 @@ def prepare_ocp(biorbd_model_path, final_time, n_shooting,
         dynamics.add(DynamicsFcn.MUSCLE_DRIVEN)
     else:
         if with_f_ext:
-            dynamics.add(custom_configure,
-                         dynamic_function=custom_torque_driven,
-                         # with_f_ext=with_f_ext,
-                         expand_dynamics=True)
+            dynamics.add(
+                custom_configure,
+                dynamic_function=custom_torque_driven,
+                # with_f_ext=with_f_ext,
+                expand_dynamics=True,
+            )
         else:
             # dynamics.add(custom_configure,
             #              dynamic_function=custom_torque_driven,
@@ -320,8 +391,8 @@ def prepare_ocp(biorbd_model_path, final_time, n_shooting,
     # x_bounds[:, 0] = (1.0, 1.0, 0, 0)
     x_init = InitialGuessList()
     # Initial guess
-    x_init.add("q", q_init[: bio_model.nb_q, :n_shooting + 1], interpolation=InterpolationType.EACH_FRAME)
-    x_init.add("qdot", q_init[bio_model.nb_q:, :n_shooting + 1], interpolation=InterpolationType.EACH_FRAME)
+    x_init.add("q", q_init[: bio_model.nb_q, : n_shooting + 1], interpolation=InterpolationType.EACH_FRAME)
+    x_init.add("qdot", q_init[bio_model.nb_q :, : n_shooting + 1], interpolation=InterpolationType.EACH_FRAME)
 
     # Define control path constraint
     u_bounds = BoundsList()
@@ -418,6 +489,7 @@ def get_solver_options(solver):
             mhe_dict["solver"].set_option_unsafe(val=solver_options[key], name=key)
         mhe_dict["solver"].set_convergence_tolerance(1e-4)
         from copy import copy
+
         mhe_dict["solver"] = copy(mhe_dict["solver"])
         mhe_dict["solver"].set_print_level(1)
         mhe_dict["solver"].set_qp_solver("PARTIAL_CONDENSING_HPIPM")  # PARTIAL_CONDENSING_OSQP PARTIAL_CONDENSING_HPIPM
@@ -433,6 +505,7 @@ def get_solver_options(solver):
         mhe_dict["solver"].set_tol(1e-5)
         mhe_dict["solver"].set_linear_solver("ma57")
         from copy import copy
+
         mhe_dict["solver_first_iter"] = copy(mhe_dict["solver"])
         mhe_dict["solver_first_iter"].set_maximum_iterations(100)
         mhe_dict["solver_first_iter"].set_tol(1e-5)
@@ -478,8 +551,11 @@ def _return_param_from_mapping(p_mapping, p_init, scaling_factor=1):
 def _apply_params(model, param_list, params_to_optim, model_param_init=None, with_casadi=True, ratio=None):
     for k in range(model.nbMuscles()):
         if "f_iso" in params_to_optim:
-            f_init = model.muscle(k).characteristics().forceIsoMax() if not model_param_init else \
-            model_param_init[params_to_optim.index("f_iso")][k]
+            f_init = (
+                model.muscle(k).characteristics().forceIsoMax()
+                if not model_param_init
+                else model_param_init[params_to_optim.index("f_iso")][k]
+            )
             # param_tmp = param_list[params_to_optim.index("f_iso")][k] * f_init
             # param_tmp = param_tmp if with_casadi else float(param_tmp)
             # model.muscle(k).characteristics().setForceIsoMax(f_init + param_tmp)
@@ -487,8 +563,11 @@ def _apply_params(model, param_list, params_to_optim, model_param_init=None, wit
             param_tmp = param_tmp if with_casadi else float(param_tmp)
             model.muscle(k).characteristics().setForceIsoMax(f_init * param_tmp)
         if "lm_optim" in params_to_optim:
-            l_init = model.muscle(k).characteristics().optimalLength() if not model_param_init else \
-            model_param_init[params_to_optim.index("lm_optim")][k]
+            l_init = (
+                model.muscle(k).characteristics().optimalLength()
+                if not model_param_init
+                else model_param_init[params_to_optim.index("lm_optim")][k]
+            )
             # param_tmp = param_list[params_to_optim.index("lm_optim")][k] * l_init
             # param_tmp = param_tmp if with_casadi else float(param_tmp)
             # model.muscle(k).characteristics().setOptimalLength(l_init + param_tmp)
@@ -496,12 +575,18 @@ def _apply_params(model, param_list, params_to_optim, model_param_init=None, wit
             param_tmp = param_tmp if with_casadi else float(param_tmp)
             model.muscle(k).characteristics().setOptimalLength(l_init * param_tmp)
             if ratio and "lt_slack" not in params_to_optim:
-                opt_l = model.muscle(k).characteristics().optimalLength().to_mx() if with_casadi else float(
-                    model.muscle(k).characteristics().optimalLength())
+                opt_l = (
+                    model.muscle(k).characteristics().optimalLength().to_mx()
+                    if with_casadi
+                    else float(model.muscle(k).characteristics().optimalLength())
+                )
                 model.muscle(k).characteristics().setTendonSlackLength(opt_l * ratio[k])
         if "lt_slack" in params_to_optim:
-            l_init = model.muscle(k).characteristics().tendonSlackLength() if not model_param_init else \
-            model_param_init[params_to_optim.index("lt_slack")][k]
+            l_init = (
+                model.muscle(k).characteristics().tendonSlackLength()
+                if not model_param_init
+                else model_param_init[params_to_optim.index("lt_slack")][k]
+            )
             # param_tmp = param_list[params_to_optim.index("lt_slack")][k] * l_init
             # param_tmp = param_tmp if with_casadi else float(param_tmp)
             # model.muscle(k).characteristics().setTendonSlackLength(l_init + param_tmp)
@@ -511,17 +596,21 @@ def _apply_params(model, param_list, params_to_optim, model_param_init=None, wit
     return model
 
 
-def _muscle_torque(model, scaling_factor,
-                   p_mapping,
-                   p_sym,
-                   muscle_list, use_p_mapping=True,
-                   with_param=True,
-                   return_casadi_function=False, params_to_optim=None, model_params_init=None,
-                   ratio=None):
+def _muscle_torque(
+    model,
+    scaling_factor,
+    p_mapping,
+    p_sym,
+    muscle_list,
+    use_p_mapping=True,
+    with_param=True,
+    return_casadi_function=False,
+    params_to_optim=None,
+    model_params_init=None,
+    ratio=None,
+):
 
-    def muscle_joint_torque(model, activations, q, qdot,
-                            p_init=None
-                            ) -> MX:
+    def muscle_joint_torque(model, activations, q, qdot, p_init=None) -> MX:
         if with_param:
             param_list = _return_param_from_mapping(p_mapping, p_init)
             model = _apply_params(model, param_list, params_to_optim, model_params_init, ratio=ratio)
@@ -540,20 +629,17 @@ def _muscle_torque(model, scaling_factor,
             qdot = ca.MX.sym("qdot", model.nbQ())
             n_p = len(p_mapping) * model.nbMuscles()
             p_sym = ca.MX.sym("p_sym_bis", n_p)
-            mjt = muscle_joint_torque(model, x, q, qdot,
-                                      p_sym)
+            mjt = muscle_joint_torque(model, x, q, qdot, p_sym)
 
-            mjt_func = ca.Function("mjt_func", [x, q, qdot,
-                                                p_sym
-                                                ], [mjt]).expand()
-        # else:
-        #     mjt = muscle_joint_torque(model, x, q, qdot,)
-        #     mjt_func = ca.Function("mjt_func", [x, q, qdot], [mjt]).expand()
+            mjt_func = ca.Function("mjt_func", [x, q, qdot, p_sym], [mjt]).expand()
+            # else:
+            #     mjt = muscle_joint_torque(model, x, q, qdot,)
+            #     mjt_func = ca.Function("mjt_func", [x, q, qdot], [mjt]).expand()
             return mjt_func
 
     mus_j_torque = ca.MX.zeros((q.shape[0], q.shape[1]))
     for k in range(q.shape[1]):
-        act = x[k * model.nbMuscles(): (k + 1) * model.nbMuscles()] / scaling_factor[0]
+        act = x[k * model.nbMuscles() : (k + 1) * model.nbMuscles()] / scaling_factor[0]
         mus_j_torque[:, k] = muscle_joint_torque(model, act, q[:, k], qdot[:, k], p_init)
     return mus_j_torque, p_init
 
@@ -567,6 +653,7 @@ def _return_forward_function(model):
 
     def forward_dynamics(states_sym, tau_tot_sym, f_ext_sym):
         from casadi import cross
+
         B = [0, 0, 0, 1]
         all_jcs = model.allGlobalJCS(q_sym)
         RT = all_jcs[-1].to_mx()
@@ -577,11 +664,11 @@ def _return_forward_function(model):
         f_ext[:3] = f_ext[:3] + cross(vecteur_OB, f_ext[3:6])
         ext = model.externalForceSet()
         ext.add("hand_left", f_ext)
-        q = states_sym[:model.nbQ()]
-        qdot = states_sym[model.nbQ():]
+        q = states_sym[: model.nbQ()]
+        qdot = states_sym[model.nbQ() :]
         ddq = model.ForwardDynamics(q, qdot, tau_tot_sym, ext).to_mx()
         return ca.vertcat(qdot, ddq)
-        #return model.ForwardDynamics(q_sym, qdot_sym, tau_tot_sym, ext).to_mx()
+        # return model.ForwardDynamics(q_sym, qdot_sym, tau_tot_sym, ext).to_mx()
 
     q_sym = ca.MX.sym("q", model.nbQ())
     qdot_sym = ca.MX.sym("qdot", model.nbQdot())
@@ -594,37 +681,48 @@ def _return_forward_function(model):
     def next_x(h, q, qdot, tau, f_ext, fun):
         k1 = fun(vertcat(q, qdot), tau, f_ext)
         k2 = fun(vertcat(q, qdot) + h / 2 * k1, tau, f_ext)
-        k3 = fun(vertcat(q, qdot) + h / 2 * k2,  tau, f_ext)
+        k3 = fun(vertcat(q, qdot) + h / 2 * k2, tau, f_ext)
         k4 = fun(vertcat(q, qdot) + h * k3, tau, f_ext)
         states = vertcat(q, qdot) + h / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
-        q = states[:model.nbQ()]
-        qdot = states[model.nbQ():]
+        q = states[: model.nbQ()]
+        qdot = states[model.nbQ() :]
         return q, qdot
 
     return forward_function, next_x
 
 
-def _compute_cost_function_old(model, scaling_factor, x, q, qdot, tau, p, pas_tau, tau_mat, act, weights,
-                           p_mapping=None,
-                           mus_j_torque=None,
-                           f_ext=None,
-                           mvc_normalized=True,
-                           torque_as_constraint=False,
-                           with_torque=True,
-                           dynamics_as_constraint=False,
-                           muscle_track_idx=None,
-                           muscle_casadi_function=None,
-                           passive_joint_torques=None,
-                           with_param=True,
-                           params_to_optim=None,
-                           use_ratio_tracking=False,
-                           ratio=None,
-                           param_init=None,
-                           passive_torque_idx=None,
-                           forward_function=None,
-                           next_x=None,
-                           h=None,
-                           ):
+def _compute_cost_function_old(
+    model,
+    scaling_factor,
+    x,
+    q,
+    qdot,
+    tau,
+    p,
+    pas_tau,
+    tau_mat,
+    act,
+    weights,
+    p_mapping=None,
+    mus_j_torque=None,
+    f_ext=None,
+    mvc_normalized=True,
+    torque_as_constraint=False,
+    with_torque=True,
+    dynamics_as_constraint=False,
+    muscle_track_idx=None,
+    muscle_casadi_function=None,
+    passive_joint_torques=None,
+    with_param=True,
+    params_to_optim=None,
+    use_ratio_tracking=False,
+    ratio=None,
+    param_init=None,
+    passive_torque_idx=None,
+    forward_function=None,
+    next_x=None,
+    h=None,
+):
     ns = q.shape[1]
     with_root = True if model.nbQ() > 10 else False
     penalty = []
@@ -638,8 +736,11 @@ def _compute_cost_function_old(model, scaling_factor, x, q, qdot, tau, p, pas_ta
         count = 0
         for p_idx in range(len(p_mapping)):
             # J = _add_to_J(J, weights[f"min_{params_to_optim[p_idx]}"], (p[count: count + len(p_mapping[p_idx][0])]))
-            J = _add_to_J(J, weights[f"min_{params_to_optim[p_idx]}"],
-                          (p[count: count + len(p_mapping[p_idx][0])] - 1 * scaling_factor[1]))
+            J = _add_to_J(
+                J,
+                weights[f"min_{params_to_optim[p_idx]}"],
+                (p[count : count + len(p_mapping[p_idx][0])] - 1 * scaling_factor[1]),
+            )
             # if use_ratio_tracking:
             #     if params_to_optim[p_idx] == "lm_optim":
             #         lm_opti = p[count: count + len(p_mapping[p_idx][0])]
@@ -656,7 +757,7 @@ def _compute_cost_function_old(model, scaling_factor, x, q, qdot, tau, p, pas_ta
                 # lt_slack_optimized = lt_init + lt_slack[i] * lt_init
                 lm_optimized = lm_init * lm_opti[i]
                 lt_slack_optimized = lt_init * lt_slack[i]
-                #to_minimize = (lt_slack_optimized / lm_optimized) - ratio[i] if to_minimize is None else ca.vertcat(to_minimize, (lt_slack_optimized / lm_optimized)-ratio[i])
+                # to_minimize = (lt_slack_optimized / lm_optimized) - ratio[i] if to_minimize is None else ca.vertcat(to_minimize, (lt_slack_optimized / lm_optimized)-ratio[i])
                 J = _add_to_J(J, weights["ratio_tracking"], (lt_slack_optimized / lm_optimized) - ratio[i])
 
             J = _add_to_J(J, weights["ratio_tracking"], to_minimize)
@@ -676,41 +777,58 @@ def _compute_cost_function_old(model, scaling_factor, x, q, qdot, tau, p, pas_ta
             if with_param:
 
                 mus_tau = muscle_casadi_function(
-                    x[i * model.nbMuscles(): (i + 1) * model.nbMuscles()] / scaling_factor[0],
-                    q[:, i], qdot[:, i], p / scaling_factor[1])
+                    x[i * model.nbMuscles() : (i + 1) * model.nbMuscles()] / scaling_factor[0],
+                    q[:, i],
+                    qdot[:, i],
+                    p / scaling_factor[1],
+                )
             else:
                 mus_tau = muscle_casadi_function(
-                    x[i * model.nbMuscles(): (i + 1) * model.nbMuscles()] / scaling_factor[0],
-                    q[:, i], qdot[:, i])
+                    x[i * model.nbMuscles() : (i + 1) * model.nbMuscles()] / scaling_factor[0], q[:, i], qdot[:, i]
+                )
         else:
             mus_tau = mus_j_torque[:, i]
         if not torque_as_constraint:
             if with_torque:
-                pas_tau_tmp = pas_tau[i * len(passive_torque_idx): (i + 1) * len(passive_torque_idx)]
+                pas_tau_tmp = pas_tau[i * len(passive_torque_idx) : (i + 1) * len(passive_torque_idx)]
                 count = 0
                 # final_pas_tau_tmp = ca.MX.zeros(model.nbQ() - 10, 1)
                 final_pas_tau_tmp = None
                 for t in range(0, model.nbGeneralizedTorque()):
                     if t in passive_torque_idx:
-                        final_pas_tau_tmp = pas_tau_tmp[count] if final_pas_tau_tmp is None else ca.vertcat(
-                            final_pas_tau_tmp, pas_tau_tmp[count])
+                        final_pas_tau_tmp = (
+                            pas_tau_tmp[count]
+                            if final_pas_tau_tmp is None
+                            else ca.vertcat(final_pas_tau_tmp, pas_tau_tmp[count])
+                        )
                         count += 1
                     else:
-                        final_pas_tau_tmp = ca.MX.zeros(1) if final_pas_tau_tmp is None else ca.vertcat(
-                            final_pas_tau_tmp, ca.MX.zeros(1))
-                tau_init[i * len(passive_torque_idx):(i + 1) * len(passive_torque_idx)] = np.zeros(
-                    (len(passive_torque_idx)))
+                        final_pas_tau_tmp = (
+                            ca.MX.zeros(1)
+                            if final_pas_tau_tmp is None
+                            else ca.vertcat(final_pas_tau_tmp, ca.MX.zeros(1))
+                        )
+                tau_init[i * len(passive_torque_idx) : (i + 1) * len(passive_torque_idx)] = np.zeros(
+                    (len(passive_torque_idx))
+                )
                 # J = _add_to_J(J, weights["tau_tracking"],
                 #               (tau[first_idx:, i] * scaling_factor[2] + passive_joint_torques[first_idx:, i] - (mus_tau[first_idx:] * scaling_factor[2] + final_pas_tau_tmp)))
-                J = _add_to_J(J, weights["tau_tracking"],
-                              (tau[passive_torque_idx, i] * scaling_factor[2] + passive_joint_torques[
-                                  passive_torque_idx, i] - (
-                                           mus_tau[passive_torque_idx] * scaling_factor[2] + final_pas_tau_tmp[
-                                       passive_torque_idx])))
+                J = _add_to_J(
+                    J,
+                    weights["tau_tracking"],
+                    (
+                        tau[passive_torque_idx, i] * scaling_factor[2]
+                        + passive_joint_torques[passive_torque_idx, i]
+                        - (mus_tau[passive_torque_idx] * scaling_factor[2] + final_pas_tau_tmp[passive_torque_idx])
+                    ),
+                )
                 # J = _add_to_J(J, weights["tau_tracking"] / 10, (tau[passive_torque_idx, i] - mus_tau[passive_torque_idx]))
             else:
-                J = _add_to_J(J, weights["tau_tracking"],
-                              (tau[model.nbGeneralizedTorque() - 10:, i] - mus_tau[model.nbGeneralizedTorque() - 10:]))
+                J = _add_to_J(
+                    J,
+                    weights["tau_tracking"],
+                    (tau[model.nbGeneralizedTorque() - 10 :, i] - mus_tau[model.nbGeneralizedTorque() - 10 :]),
+                )
         else:
             if constr is None:
                 constr = (tau[:, i] - (mus_tau + pas_tau[:] / scaling_factor[2])) ** 2
@@ -741,17 +859,21 @@ def _compute_cost_function_old(model, scaling_factor, x, q, qdot, tau, p, pas_ta
                 # J = _add_to_J(J, weights["activation_tracking"], ((x[
                 #                                                    i * model.nbMuscles() + m: i * model.nbMuscles() + m + 1]
                 #                                                    ) - MX(
-                #act[idx, i] * scaling_factor[0])))
+                # act[idx, i] * scaling_factor[0])))
                 if all_x_mus is None:
-                    all_x_mus = weights["activation_tracking"] * ((x[
-                                                                   i * model.nbMuscles() + m: i * model.nbMuscles() + m + 1]
-                                                                  ) - MX(
-                        act[idx, i] * scaling_factor[0]))
+                    all_x_mus = weights["activation_tracking"] * (
+                        (x[i * model.nbMuscles() + m : i * model.nbMuscles() + m + 1])
+                        - MX(act[idx, i] * scaling_factor[0])
+                    )
                 else:
-                    all_x_mus = vertcat(all_x_mus, weights["activation_tracking"] * ((x[
-                                                                                      i * model.nbMuscles() + m: i * model.nbMuscles() + m + 1]
-                                                                                     ) - MX(
-                        act[idx, i] * scaling_factor[0])))
+                    all_x_mus = vertcat(
+                        all_x_mus,
+                        weights["activation_tracking"]
+                        * (
+                            (x[i * model.nbMuscles() + m : i * model.nbMuscles() + m + 1])
+                            - MX(act[idx, i] * scaling_factor[0])
+                        ),
+                    )
 
             else:
                 x0[i * model.nbMuscles() + m] = 0.1 * scaling_factor[0]
@@ -768,8 +890,18 @@ def _compute_cost_function_old(model, scaling_factor, x, q, qdot, tau, p, pas_ta
     return J, constr, x0, tau_init
 
 
-def _add_params_to_J(p, p_mapping, params_to_optim, scaling_factor, use_ratio_tracking, weights, param_init=None,
-                     ratio=None, bounds_l_norm=True, muscle_len=None):
+def _add_params_to_J(
+    p,
+    p_mapping,
+    params_to_optim,
+    scaling_factor,
+    use_ratio_tracking,
+    weights,
+    param_init=None,
+    ratio=None,
+    bounds_l_norm=True,
+    muscle_len=None,
+):
     lm_opti, lt_slack = None, None
     count = 0
     J_params = 0
@@ -778,18 +910,20 @@ def _add_params_to_J(p, p_mapping, params_to_optim, scaling_factor, use_ratio_tr
     for p_idx in range(len(p_mapping)):
         # J = _add_to_J(J, weights[f"min_{params_to_optim[p_idx]}"],
         #               (p[count: count + len(p_mapping[p_idx][0])] - 1 * scaling_factor[1]))
-        p_tmp = p[count: count + len(p_mapping[p_idx][0])]
+        p_tmp = p[count : count + len(p_mapping[p_idx][0])]
         for p_idx_bis in range(p_tmp.shape[0]):
-            J_params += (weights[f"min_{params_to_optim[p_idx]}"] * (p_tmp[p_idx_bis] - 1 * scaling_factor[1][p_idx])) ** 2
+            J_params += (
+                weights[f"min_{params_to_optim[p_idx]}"] * (p_tmp[p_idx_bis] - 1 * scaling_factor[1][p_idx])
+            ) ** 2
         if use_ratio_tracking:
             if params_to_optim[p_idx] == "lm_optim":
-                lm_opti = p[count: count + len(p_mapping[p_idx][0])]
+                lm_opti = p[count : count + len(p_mapping[p_idx][0])]
             if params_to_optim[p_idx] == "lt_slack":
-                lt_slack = p[count: count + len(p_mapping[p_idx][0])]
+                lt_slack = p[count : count + len(p_mapping[p_idx][0])]
         count += len(p_mapping[p_idx][0])
 
-    #norm_len = MX(muscle_len) / (lm_opti / MX(scaling_factor[1][params_to_optim.index("lm_optim")]))
-    #for i in range(lm_opti.shape[0]):
+    # norm_len = MX(muscle_len) / (lm_opti / MX(scaling_factor[1][params_to_optim.index("lm_optim")]))
+    # for i in range(lm_opti.shape[0]):
     #    #J_params += (10000 * ca.sum2(norm_len[i, :] - 1)) **2
     #    J_params += ca.sum2((1-tanh(1000*(norm_len[i, :]-0.7))) * 1000) **2
 
@@ -825,15 +959,34 @@ def _add_x_to_J(model, x, act, weights, scaling_factor, muscle_track_idx, ns):
         for m in range(model.nbMuscles()):
             if m in muscle_track_idx:
                 idx = muscle_track_idx.index(m)
-                J += (weights["activation_tracking"] * ((x[i * model.nbMuscles() + m]) - MX(
-                        act[idx, i] * scaling_factor[0]))) ** 2
+                J += (
+                    weights["activation_tracking"]
+                    * ((x[i * model.nbMuscles() + m]) - MX(act[idx, i] * scaling_factor[0]))
+                ) ** 2
             else:
                 J += (weights["min_act"] * x[i * model.nbMuscles() + m]) ** 2
     return J
 
 
-def _add_tau_to_J(model, tau, x, p, q, qdot, mus_j_torque, pas_tau, weights, scaling_factor, passive_torque_idx,
-                  with_torque, ns, muscle_casadi_function, with_param, tau_as_constraint=False, p_mapping=None):
+def _add_tau_to_J(
+    model,
+    tau,
+    x,
+    p,
+    q,
+    qdot,
+    mus_j_torque,
+    pas_tau,
+    weights,
+    scaling_factor,
+    passive_torque_idx,
+    with_torque,
+    ns,
+    muscle_casadi_function,
+    with_param,
+    tau_as_constraint=False,
+    p_mapping=None,
+):
     J = 0
     mus_tau_tot = MX.zeros(model.nbGeneralizedTorque(), ns)
     for i in range(ns):
@@ -843,38 +996,58 @@ def _add_tau_to_J(model, tau, x, p, q, qdot, mus_j_torque, pas_tau, weights, sca
                 count = 0
                 for p_idx in range(len(p_mapping)):
                     n_p = len(p_mapping[p_idx][0])
-                    p_tmp = p[count:count + n_p] / scaling_factor[1][p_idx] if p_tmp is None else vertcat(p_tmp, p[count:count + n_p] / scaling_factor[1][p_idx])
+                    p_tmp = (
+                        p[count : count + n_p] / scaling_factor[1][p_idx]
+                        if p_tmp is None
+                        else vertcat(p_tmp, p[count : count + n_p] / scaling_factor[1][p_idx])
+                    )
                     count += n_p
                 mus_tau = muscle_casadi_function(
-                    x[i * model.nbMuscles(): (i + 1) * model.nbMuscles()] / scaling_factor[0],
-                    q[:, i], qdot[:, i]
-                    , p_tmp
+                    x[i * model.nbMuscles() : (i + 1) * model.nbMuscles()] / scaling_factor[0],
+                    q[:, i],
+                    qdot[:, i],
+                    p_tmp,
                 )
             else:
                 mus_tau = muscle_casadi_function(
-                    x[i * model.nbMuscles(): (i + 1) * model.nbMuscles()] / scaling_factor[0],
-                    q[:, i], qdot[:, i])
+                    x[i * model.nbMuscles() : (i + 1) * model.nbMuscles()] / scaling_factor[0], q[:, i], qdot[:, i]
+                )
         else:
             mus_tau = mus_j_torque[:, i]
 
         mus_tau_tot[:, i] = mus_tau
-        pas_tau_tmp = pas_tau[i * len(passive_torque_idx): (i + 1) * len(passive_torque_idx)] if with_torque else None
+        pas_tau_tmp = pas_tau[i * len(passive_torque_idx) : (i + 1) * len(passive_torque_idx)] if with_torque else None
         count = 0
         for t in passive_torque_idx:
             to_substract = mus_tau[t] * scaling_factor[2] + pas_tau_tmp[count] if with_torque else mus_tau[t]
             sqrt = 1 if tau_as_constraint else 2
-            #J = (tau[t, i] * scaling_factor[2] - to_substract) if J is None else vertcat(J, (tau[t, i] * scaling_factor[2] - to_substract))
+            # J = (tau[t, i] * scaling_factor[2] - to_substract) if J is None else vertcat(J, (tau[t, i] * scaling_factor[2] - to_substract))
             J += (weights["tau_tracking"] * (tau[t, i] * scaling_factor[2] - to_substract)) ** sqrt
             count += 1
-    #J = (weights["tau_tracking"] * sum1(J)) ** sqrt
+    # J = (weights["tau_tracking"] * sum1(J)) ** sqrt
     return J, mus_tau_tot
 
 
-def _add_dyn_to_J(h, q, qdot, mus_tau, pas_tau, f_ext, forward_function, ns, weights, scaling_factor, tau, next_x, state_int, passive_torque_idx):
-    J=0
+def _add_dyn_to_J(
+    h,
+    q,
+    qdot,
+    mus_tau,
+    pas_tau,
+    f_ext,
+    forward_function,
+    ns,
+    weights,
+    scaling_factor,
+    tau,
+    next_x,
+    state_int,
+    passive_torque_idx,
+):
+    J = 0
     non_muscle_tau = MX.zeros(q.shape[0], ns)
     for i in range(ns):
-        pas_tau_tmp = pas_tau[i * len(passive_torque_idx): (i + 1) * len(passive_torque_idx)] / scaling_factor[2]
+        pas_tau_tmp = pas_tau[i * len(passive_torque_idx) : (i + 1) * len(passive_torque_idx)] / scaling_factor[2]
         count = 0
         for j in range(non_muscle_tau.shape[0]):
             if j < q.shape[0] - 10:
@@ -884,10 +1057,8 @@ def _add_dyn_to_J(h, q, qdot, mus_tau, pas_tau, f_ext, forward_function, ns, wei
                 count += 1
 
         tau_tot = mus_tau[:, i] + non_muscle_tau[:, i]
-        next_q, next_q_dot = next_x(h, q[:, i], qdot[:, i], tau_tot,
-                                        f_ext[:, i],
-                                        forward_function)
-        J += (weights["dynamics"] * (next_q - state_int[:q.shape[0], i])) ** 2
+        next_q, next_q_dot = next_x(h, q[:, i], qdot[:, i], tau_tot, f_ext[:, i], forward_function)
+        J += (weights["dynamics"] * (next_q - state_int[: q.shape[0], i])) ** 2
     return J
 
 
@@ -908,23 +1079,33 @@ def _get_all_muscle_len(model, q):
     for i in range(q.shape[1]):
         for m in range(model.nbMuscles()):
             mus_list[m, i] = model.muscle(m).length(model, q[:, i])
-            #print(mus_list / (model.muscle(m).characteristics().optimalLength()))
+            # print(mus_list / (model.muscle(m).characteristics().optimalLength()))
     return mus_list
 
 
-def _get_cost_n_dependant(model, scaling_factor, x, q, qdot, tau, p, pas_tau, act, weights,
-                           p_mapping=None,
-                           with_torque=True,
-                           muscle_track_idx=None,
-                           muscle_casadi_function=None,
-                           with_param=True,
-                           passive_torque_idx=None,
-                           tau_as_constraint=False,
-                          ignore_dof = None
-                           ):
+def _get_cost_n_dependant(
+    model,
+    scaling_factor,
+    x,
+    q,
+    qdot,
+    tau,
+    p,
+    pas_tau,
+    act,
+    weights,
+    p_mapping=None,
+    with_torque=True,
+    muscle_track_idx=None,
+    muscle_casadi_function=None,
+    with_param=True,
+    passive_torque_idx=None,
+    tau_as_constraint=False,
+    ignore_dof=None,
+):
     J = 0
     # min pas torque
-    #torque_weights[[0,1,2,3,4, 9]] *= 10
+    # torque_weights[[0,1,2,3,4, 9]] *= 10
     if with_torque:
         torque_weights = np.array([weights["min_pas_torque"] for _ in range(pas_tau.shape[0])])
         for tau_idx in range(pas_tau.shape[0]):
@@ -934,8 +1115,7 @@ def _get_cost_n_dependant(model, scaling_factor, x, q, qdot, tau, p, pas_tau, ac
     for m in range(model.nbMuscles()):
         if m in muscle_track_idx:
             idx = muscle_track_idx.index(m)
-            J += (weights["activation_tracking"] * ((x[m]) - MX(
-                act[idx] * scaling_factor[0]))) ** 2
+            J += (weights["activation_tracking"] * ((x[m]) - MX(act[idx] * scaling_factor[0]))) ** 2
         else:
             J += (weights["min_act"] * x[m]) ** 2
 
@@ -947,7 +1127,11 @@ def _get_cost_n_dependant(model, scaling_factor, x, q, qdot, tau, p, pas_tau, ac
         count = 0
         for p_idx in range(len(p_mapping)):
             n_p = len(p_mapping[p_idx][0])
-            p_tmp = p[count:count + n_p] / scaling_factor[1][p_idx] if p_tmp is None else vertcat(p_tmp, p[count:count + n_p] / scaling_factor[1][p_idx])
+            p_tmp = (
+                p[count : count + n_p] / scaling_factor[1][p_idx]
+                if p_tmp is None
+                else vertcat(p_tmp, p[count : count + n_p] / scaling_factor[1][p_idx])
+            )
             count += n_p
         mus_tau = muscle_casadi_function(x / scaling_factor[0], q, qdot, p_tmp)
     else:
@@ -975,27 +1159,37 @@ def _get_cost_n_dependant(model, scaling_factor, x, q, qdot, tau, p, pas_tau, ac
     return J
 
 
-def _compute_cost_function(model, scaling_factor, x, q, qdot, tau, p, pas_tau, act, weights,
-                           param_init,
-                           p_mapping=None,
-                           mus_j_torque=None,
-                           with_torque=True,
-                           muscle_track_idx=None,
-                           muscle_casadi_function=None,
-                           with_param=True,
-                           params_to_optim=None,
-                           use_ratio_tracking=False,
-                           passive_torque_idx=None,
-                           tau_as_constraint=False,
-                           dyn_as_constraint=False,
-                            forward_function=None,
-                                    next_x=None,
-                                    h=None,
-                           f_ext = None,
-                           state_int=None,
-                           all_muscle_len=None,
-                           l_norm_bounded=False
-                           ):
+def _compute_cost_function(
+    model,
+    scaling_factor,
+    x,
+    q,
+    qdot,
+    tau,
+    p,
+    pas_tau,
+    act,
+    weights,
+    param_init,
+    p_mapping=None,
+    mus_j_torque=None,
+    with_torque=True,
+    muscle_track_idx=None,
+    muscle_casadi_function=None,
+    with_param=True,
+    params_to_optim=None,
+    use_ratio_tracking=False,
+    passive_torque_idx=None,
+    tau_as_constraint=False,
+    dyn_as_constraint=False,
+    forward_function=None,
+    next_x=None,
+    h=None,
+    f_ext=None,
+    state_int=None,
+    all_muscle_len=None,
+    l_norm_bounded=False,
+):
     ns = q.shape[1]
     J = 0
     # min pas torque
@@ -1009,8 +1203,17 @@ def _compute_cost_function(model, scaling_factor, x, q, qdot, tau, p, pas_tau, a
     # min params
     if with_param:
         # all_muscle_len = _get_all_muscle_len(model, q)
-        J_params, g_params = _add_params_to_J(p, p_mapping, params_to_optim, scaling_factor, use_ratio_tracking, weights, param_init,
-                                    bounds_l_norm=l_norm_bounded, muscle_len=all_muscle_len)
+        J_params, g_params = _add_params_to_J(
+            p,
+            p_mapping,
+            params_to_optim,
+            scaling_factor,
+            use_ratio_tracking,
+            weights,
+            param_init,
+            bounds_l_norm=l_norm_bounded,
+            muscle_len=all_muscle_len,
+        )
         penalties.append(J_params)
         if l_norm_bounded:
             g.append(g_params)
@@ -1020,8 +1223,24 @@ def _compute_cost_function(model, scaling_factor, x, q, qdot, tau, p, pas_tau, a
     #
     # track exp tau
     weights["tau_tracking"] = 1 if tau_as_constraint else weights["tau_tracking"]
-    J_tau, mus_tau = _add_tau_to_J(model, tau, x, p, q, qdot, mus_j_torque, pas_tau, weights, scaling_factor,
-                                    passive_torque_idx, with_torque, ns, muscle_casadi_function, with_param, p_mapping=p_mapping)
+    J_tau, mus_tau = _add_tau_to_J(
+        model,
+        tau,
+        x,
+        p,
+        q,
+        qdot,
+        mus_j_torque,
+        pas_tau,
+        weights,
+        scaling_factor,
+        passive_torque_idx,
+        with_torque,
+        ns,
+        muscle_casadi_function,
+        with_param,
+        p_mapping=p_mapping,
+    )
 
     if not tau_as_constraint:
         penalties.append(J_tau)
@@ -1049,11 +1268,29 @@ def _compute_cost_function(model, scaling_factor, x, q, qdot, tau, p, pas_tau, a
     return J, G
 
 
-def _return_bounds(model, scaling_factor, p, ns, tau, x, pas_tau, x0, tau_0, with_param=True, with_torque=True,
-                   p_init=1, params_to_optim=(), p_mapping=None, param_bounds=None, l_norm_bounded=False, torque_as_constr=False, dyn_as_constr=False):
+def _return_bounds(
+    model,
+    scaling_factor,
+    p,
+    ns,
+    tau,
+    x,
+    pas_tau,
+    x0,
+    tau_0,
+    with_param=True,
+    with_torque=True,
+    p_init=1,
+    params_to_optim=(),
+    p_mapping=None,
+    param_bounds=None,
+    l_norm_bounded=False,
+    torque_as_constr=False,
+    dyn_as_constr=False,
+):
     lbx = ca.DM.zeros(model.nbMuscles() * (ns)) + (0.0001) * scaling_factor[0]
     ubx = ca.DM.ones(model.nbMuscles() * (ns)) * scaling_factor[0]
-    #x0 = ca.DM.ones(model.nbMuscles() * (ns)) * 0.2 * scaling_factor[0]
+    # x0 = ca.DM.ones(model.nbMuscles() * (ns)) * 0.2 * scaling_factor[0]
     lbg, ubg = None, None
     if l_norm_bounded:
         if "lm_optim" in params_to_optim:
@@ -1069,14 +1306,21 @@ def _return_bounds(model, scaling_factor, p, ns, tau, x, pas_tau, x0, tau_0, wit
         for p_idx, param in enumerate(params_to_optim):
             lb, ub = param_bounds[p_idx][0], param_bounds[p_idx][1]
             n_p = len(p_mapping[p_idx][0])
-            init_p = ca.DM.zeros(n_p) + p_init * scaling_factor[1][p_idx] if init_p is None else ca.vertcat(init_p,
-                                                                                             ca.DM.zeros(n_p) + p_init * scaling_factor[1][p_idx])
-            lb_p = ca.DM.zeros(n_p) + lb * scaling_factor[1][p_idx] if lb_p is None else ca.vertcat(lb_p,
-                                                                                             ca.DM.zeros(n_p) + lb *
-                                                                                             scaling_factor[1][p_idx])
-            ub_p = ca.DM.zeros(n_p) + ub * scaling_factor[1][p_idx] if ub_p is None else ca.vertcat(ub_p,
-                                                                                             ca.DM.zeros(n_p) + ub *
-                                                                                             scaling_factor[1][p_idx])
+            init_p = (
+                ca.DM.zeros(n_p) + p_init * scaling_factor[1][p_idx]
+                if init_p is None
+                else ca.vertcat(init_p, ca.DM.zeros(n_p) + p_init * scaling_factor[1][p_idx])
+            )
+            lb_p = (
+                ca.DM.zeros(n_p) + lb * scaling_factor[1][p_idx]
+                if lb_p is None
+                else ca.vertcat(lb_p, ca.DM.zeros(n_p) + lb * scaling_factor[1][p_idx])
+            )
+            ub_p = (
+                ca.DM.zeros(n_p) + ub * scaling_factor[1][p_idx]
+                if ub_p is None
+                else ca.vertcat(ub_p, ca.DM.zeros(n_p) + ub * scaling_factor[1][p_idx])
+            )
         # init_p = ca.DM.zeros(p.shape) + p_init * scaling_factor[1]
         # lb_p = ca.DM.zeros(p.shape) + (p_init - 0.8) * scaling_factor[1]
         # ub_p = ca.DM.zeros(p.shape) + (p_init + 1) * scaling_factor[1]
@@ -1088,7 +1332,7 @@ def _return_bounds(model, scaling_factor, p, ns, tau, x, pas_tau, x0, tau_0, wit
         lb_tau = ca.DM.ones(tau_0.shape[0]) * (-50) * scaling_factor[2]
         ub_tau = ca.DM.ones(tau_0.shape[0]) * 50 * scaling_factor[2]
         init_tau = tau_0
-        #init_tau = ca.DM.zeros((tau.shape[0] - 4) * ns)
+        # init_tau = ca.DM.zeros((tau.shape[0] - 4) * ns)
         lbx = ca.vertcat(lbx, lb_tau)
         ubx = ca.vertcat(ubx, ub_tau)
         x0 = ca.vertcat(x0, init_tau)
@@ -1101,15 +1345,21 @@ def _get_params_init(model, params_to_optim, use_ratio_tracking=False):
     for p in params_to_optim:
         if p == "f_iso":
             model_param_init.append(
-                [model.muscle(k).characteristics().forceIsoMax().to_mx() for k in range(model.nbMuscles())])
+                [model.muscle(k).characteristics().forceIsoMax().to_mx() for k in range(model.nbMuscles())]
+            )
         elif p == "lm_optim":
             model_param_init.append(
-                [model.muscle(k).characteristics().optimalLength().to_mx() for k in range(model.nbMuscles())])
+                [model.muscle(k).characteristics().optimalLength().to_mx() for k in range(model.nbMuscles())]
+            )
         elif p == "lt_slack":
             model_param_init.append(
-                [model.muscle(k).characteristics().tendonSlackLength().to_mx() for k in range(model.nbMuscles())])
-    ratio = [model.muscle(k).characteristics().tendonSlackLength().to_mx() / model.muscle(
-        k).characteristics().optimalLength().to_mx() for k in range(model.nbMuscles())]
+                [model.muscle(k).characteristics().tendonSlackLength().to_mx() for k in range(model.nbMuscles())]
+            )
+    ratio = [
+        model.muscle(k).characteristics().tendonSlackLength().to_mx()
+        / model.muscle(k).characteristics().optimalLength().to_mx()
+        for k in range(model.nbMuscles())
+    ]
     return model_param_init, ratio
 
 
@@ -1135,6 +1385,7 @@ def _get_passive_joint_torque(model, q, qdot, with_casadi=True):
 
     return passive_torque
 
+
 def J_hes(model, J, symbolics_list):
     model_ca = model
     if with_torque:
@@ -1148,8 +1399,11 @@ def J_hes(model, J, symbolics_list):
     p_tmp = None
     for p_idx in range(len(p_mapping)):
         np_idx = len(p_mapping[p_idx][0])
-        p_tmp = ca.MX.ones(np_idx) * scaling_factor[1][p_idx] if p_tmp is None else vertcat(p_tmp, ca.MX.ones(np_idx) *
-                                                                                            scaling_factor[1][p_idx])
+        p_tmp = (
+            ca.MX.ones(np_idx) * scaling_factor[1][p_idx]
+            if p_tmp is None
+            else vertcat(p_tmp, ca.MX.ones(np_idx) * scaling_factor[1][p_idx])
+        )
     if with_torque:
         hes_param_num = ca.vertcat(x_tmp, pas_tau_tmp, p_tmp)
     else:
@@ -1172,6 +1426,7 @@ def J_hes(model, J, symbolics_list):
     min_hes = np.ndarray.min(jac_func_num)
     import matplotlib.cm as mcm
     import matplotlib.colors as mcolors
+
     fig_obj, axis_obj = plt.subplots(1, 1)
     jac_func_num[~(jac_func_num != 0).astype(bool)] = np.nan
     current_cmap3 = mcm.get_cmap("seismic")
@@ -1184,38 +1439,53 @@ def J_hes(model, J, symbolics_list):
     # plt.show()
 
 
-def _perform_static_optim_parameters(emg_proc, biorbd_model_path, q, qdot, tau, muscle_track_idx,
-                                     f_ext = None, use_p_mapping = False, with_param = True,
-                                     mvc_normalized = True,
-                                     with_torque = True,
-                                     torque_as_constraint = False,
-                                     dynamics_as_constraint = False,
-                                     scaling_factor = (10, 10, 10),
-                                     emg_init = None,
-                                     muscle_list = None,
-                                     p_mapping = None,
-                                     use_casadi_fct = False,
-                                     p_init = None,
-                                     emg_names = None,
-                                     params_to_optim = None,
-                                     use_ratio_tracking = False,
-                                     passive_torque_idx = None,
-                                     param_bounds = None,
-                                     state_int=None,
-                                     all_muscle_len=None,
-                                     ignore_dof = None
-                                     ) -> object:
+def _perform_static_optim_parameters(
+    emg_proc,
+    biorbd_model_path,
+    q,
+    qdot,
+    tau,
+    muscle_track_idx,
+    f_ext=None,
+    use_p_mapping=False,
+    with_param=True,
+    mvc_normalized=True,
+    with_torque=True,
+    torque_as_constraint=False,
+    dynamics_as_constraint=False,
+    scaling_factor=(10, 10, 10),
+    emg_init=None,
+    muscle_list=None,
+    p_mapping=None,
+    use_casadi_fct=False,
+    p_init=None,
+    emg_names=None,
+    params_to_optim=None,
+    use_ratio_tracking=False,
+    passive_torque_idx=None,
+    param_bounds=None,
+    state_int=None,
+    all_muscle_len=None,
+    ignore_dof=None,
+) -> object:
     model = biorbd_ca.Model(biorbd_model_path)
-    emg, emg_init = _map_activation(emg_proc, emg_init=emg_init, emg_names=emg_names,
-                                    muscle_track_idx=muscle_track_idx,
-                                    mvc_normalized=mvc_normalized,
-                                    model=model)
+    emg, emg_init = _map_activation(
+        emg_proc,
+        emg_init=emg_init,
+        emg_names=emg_names,
+        muscle_track_idx=muscle_track_idx,
+        mvc_normalized=mvc_normalized,
+        model=model,
+    )
 
     n_p = len(sum([i[0] for i in p_mapping], []))
     pas_tau = None
     p_sym = None
-    passive_torque_idx = [i for i in range(model.nbQ() - 10,
-                                           model.nbGeneralizedTorque())] if passive_torque_idx is None else passive_torque_idx
+    passive_torque_idx = (
+        [i for i in range(model.nbQ() - 10, model.nbGeneralizedTorque())]
+        if passive_torque_idx is None
+        else passive_torque_idx
+    )
     pas_tau_sym = None
     # define casadi variables
     ns = q.shape[1]
@@ -1237,9 +1507,9 @@ def _perform_static_optim_parameters(emg_proc, biorbd_model_path, q, qdot, tau, 
     tau = ca.MX(tau)
     if f_ext is not None:
         f_ext = ca.MX(f_ext)
-    #forward_function, next_x = _return_forward_function(model)
+    # forward_function, next_x = _return_forward_function(model)
     l_norm_bounded = False
-    #h = 0.008 / 4
+    # h = 0.008 / 4
     ca_funct = None
     mus_j_torque = None
     model_param_init, ratio_init = _get_params_init(model, params_to_optim, use_ratio_tracking)
@@ -1247,48 +1517,71 @@ def _perform_static_optim_parameters(emg_proc, biorbd_model_path, q, qdot, tau, 
     # param_list = _return_param_from_mapping(p_mapping, p_sym)
     # model = _apply_params(model, param_list, params_to_optim, model_param_init, ratio=ratio_init)
     if use_casadi_fct:
-        ca_funct = _muscle_torque(model, scaling_factor,
-                                  # , x_sym, q_sym, qdot_sym,
-                                  p_mapping,
-                                  p_sym,
-                                  muscle_list,
-                                  use_p_mapping=use_p_mapping,
-                                  with_param=with_param
-                                  , return_casadi_function=True,
-                                  params_to_optim=params_to_optim,
-                                  model_params_init=model_param_init, ratio=ratio_init)
+        ca_funct = _muscle_torque(
+            model,
+            scaling_factor,
+            # , x_sym, q_sym, qdot_sym,
+            p_mapping,
+            p_sym,
+            muscle_list,
+            use_p_mapping=use_p_mapping,
+            with_param=with_param,
+            return_casadi_function=True,
+            params_to_optim=params_to_optim,
+            model_params_init=model_param_init,
+            ratio=ratio_init,
+        )
     else:
-        mus_j_torque = _muscle_torque(model, scaling_factor,
-                                      x, q, qdot,
-                                      p_mapping, p_sym,
-                                      muscle_list,
-                                      use_p_mapping=use_p_mapping,
-                                      with_param=with_param,
-                                      return_casadi_function=False,
-                                      params_to_optim=params_to_optim,
-                                      model_params_init=model_param_init)
-    weights = {"tau_tracking": 2,
-               "activation_tracking": 10,
-               "min_act": 1,
-               "min_f_iso": 5,
-               "min_lm_optim": 5,
-               "min_lt_slack": 100,
-               "min_pas_torque": 0.6,
-               "ratio_tracking": 1,
-               "dynamics": 100}
+        mus_j_torque = _muscle_torque(
+            model,
+            scaling_factor,
+            x,
+            q,
+            qdot,
+            p_mapping,
+            p_sym,
+            muscle_list,
+            use_p_mapping=use_p_mapping,
+            with_param=with_param,
+            return_casadi_function=False,
+            params_to_optim=params_to_optim,
+            model_params_init=model_param_init,
+        )
+    weights = {
+        "tau_tracking": 2,
+        "activation_tracking": 10,
+        "min_act": 1,
+        "min_f_iso": 5,
+        "min_lm_optim": 5,
+        "min_lt_slack": 100,
+        "min_pas_torque": 0.6,
+        "ratio_tracking": 1,
+        "dynamics": 100,
+    }
 
     # create n dependant function
     # ml = len_fct(model, q_sym)
     # len_ca_funct = ca.Function("len_fct", [q_sym], [ml]).expand()
-    J = _get_cost_n_dependant(model, scaling_factor, x_sym, q_sym, qdot_sym, tau_sym, p_sym, pas_tau_sym, emg_sym, weights,
-                           p_mapping=p_mapping,
-                           with_torque=with_torque,
-                           muscle_track_idx=muscle_track_idx,
-                           muscle_casadi_function=ca_funct,
-                           with_param=with_param,
-                           passive_torque_idx=passive_torque_idx,
-                           tau_as_constraint=torque_as_constraint,
-                              ignore_dof=ignore_dof)
+    J = _get_cost_n_dependant(
+        model,
+        scaling_factor,
+        x_sym,
+        q_sym,
+        qdot_sym,
+        tau_sym,
+        p_sym,
+        pas_tau_sym,
+        emg_sym,
+        weights,
+        p_mapping=p_mapping,
+        with_torque=with_torque,
+        muscle_track_idx=muscle_track_idx,
+        muscle_casadi_function=ca_funct,
+        with_param=with_param,
+        passive_torque_idx=passive_torque_idx,
+        tau_as_constraint=torque_as_constraint,
+        ignore_dof=ignore_dof,
+    )
 
     symlist = [x_sym, q_sym, qdot_sym, tau_sym, emg_sym]
     if with_torque:
@@ -1307,14 +1600,23 @@ def _perform_static_optim_parameters(emg_proc, biorbd_model_path, q, qdot, tau, 
         tau_split = ca.reshape(pas_tau_all, len(passive_torque_idx), ns)
         obj_1 = J_mapped(x_split, q, qdot, tau, emg, tau_split, ca.repmat(p_all, 1, ns))
     else:
-        pas_tau_all=None
+        pas_tau_all = None
         obj_1 = J_mapped(x_split, q, qdot, tau, emg, ca.repmat(p_all, 1, ns))
     obj_1 = ca.sum2(obj_1)
 
     p_sym_2 = ca.MX.sym("p_sym_2", n_p)
-    J_2, g = _add_params_to_J(p_sym_2, p_mapping, params_to_optim, scaling_factor, use_ratio_tracking, weights,
-                              param_init=model_param_init,
-                     ratio=ratio_init, bounds_l_norm=l_norm_bounded, muscle_len=all_muscle_len)
+    J_2, g = _add_params_to_J(
+        p_sym_2,
+        p_mapping,
+        params_to_optim,
+        scaling_factor,
+        use_ratio_tracking,
+        weights,
+        param_init=model_param_init,
+        ratio=ratio_init,
+        bounds_l_norm=l_norm_bounded,
+        muscle_len=all_muscle_len,
+    )
     J_2_func = ca.Function("J2", [p_sym_2], [J_2]).expand()
     if l_norm_bounded:
         g_fun = ca.Function("g", [p_sym_2], [g]).expand()
@@ -1325,22 +1627,51 @@ def _perform_static_optim_parameters(emg_proc, biorbd_model_path, q, qdot, tau, 
 
     x0, tau_0 = _get_initial_values(model, passive_torque_idx, ns, muscle_track_idx, emg, scaling_factor)
 
-    bounds_dic = _return_bounds(model, scaling_factor, p_all, ns, tau, x_all, pas_tau_all, x0, tau_0, with_param, with_torque,
-                                p_init, params_to_optim, p_mapping, param_bounds, l_norm_bounded, torque_as_constraint, dynamics_as_constraint)
-    #bounds_dic["x0"][0:ns * model.nbMuscles()] = x0
-    opts = {"ipopt": {"max_iter": 1000, "print_level": 5, "linear_solver": "ma57",
-                      "hessian_approximation": "exact",
-                      "acceptable_tol": 1e-2,
-                      "tol": 1e-2,
-                      # "nlp_scaling_method": None,
-                      #"linear_system_scaling": None,
-                      #"fast_step_computation": "yes"
-                      }}
-    #ca.parallel.set_num_threads(4)
+    bounds_dic = _return_bounds(
+        model,
+        scaling_factor,
+        p_all,
+        ns,
+        tau,
+        x_all,
+        pas_tau_all,
+        x0,
+        tau_0,
+        with_param,
+        with_torque,
+        p_init,
+        params_to_optim,
+        p_mapping,
+        param_bounds,
+        l_norm_bounded,
+        torque_as_constraint,
+        dynamics_as_constraint,
+    )
+    # bounds_dic["x0"][0:ns * model.nbMuscles()] = x0
+    opts = {
+        "ipopt": {
+            "max_iter": 1000,
+            "print_level": 5,
+            "linear_solver": "ma57",
+            "hessian_approximation": "exact",
+            "acceptable_tol": 1e-2,
+            "tol": 1e-2,
+            # "nlp_scaling_method": None,
+            # "linear_system_scaling": None,
+            # "fast_step_computation": "yes"
+        }
+    }
+    # ca.parallel.set_num_threads(4)
     if torque_as_constraint or g is not None:
         nlp = {"x": bounds_dic["x"], "f": total_obj, "g": g}
         sol_nlp = ca.nlpsol("sol", "ipopt", nlp, opts)
-        solution = sol_nlp(x0=bounds_dic["x0"], lbx=bounds_dic["lbx"], ubx=bounds_dic["ubx"], lbg=bounds_dic["lbg"], ubg=bounds_dic["ubg"])
+        solution = sol_nlp(
+            x0=bounds_dic["x0"],
+            lbx=bounds_dic["lbx"],
+            ubx=bounds_dic["ubx"],
+            lbg=bounds_dic["lbg"],
+            ubg=bounds_dic["ubg"],
+        )
     else:
         nlp = {"x": bounds_dic["x"], "f": total_obj}
         sol_nlp = ca.nlpsol("sol", "ipopt", nlp, opts)
@@ -1351,48 +1682,58 @@ def _perform_static_optim_parameters(emg_proc, biorbd_model_path, q, qdot, tau, 
     act = np.zeros((model.nbMuscles(), ns))
     pas_tau_mat = np.zeros(tau.shape)
     if with_torque:
-        sol_pas_tau = solution["x"][-len(passive_torque_idx) * ns:].toarray().squeeze()
+        sol_pas_tau = solution["x"][-len(passive_torque_idx) * ns :].toarray().squeeze()
     for j in range(ns):
-        act[:, j] = np.array(solution["x"][
-                             j * model.nbMuscles(): j * model.nbMuscles() + model.nbMuscles()].toarray().squeeze()) / \
-                    scaling_factor[0]
+        act[:, j] = (
+            np.array(
+                solution["x"][j * model.nbMuscles() : j * model.nbMuscles() + model.nbMuscles()].toarray().squeeze()
+            )
+            / scaling_factor[0]
+        )
         if with_torque:
             count = 0
             for k in passive_torque_idx:
-                pas_tau_mat[k, j] = (np.array(
-                    sol_pas_tau[j * len(passive_torque_idx): (j + 1) * len(passive_torque_idx)]) /
-                                    scaling_factor[2])[count]
+                pas_tau_mat[k, j] = (
+                    np.array(sol_pas_tau[j * len(passive_torque_idx) : (j + 1) * len(passive_torque_idx)])
+                    / scaling_factor[2]
+                )[count]
                 count += 1
     n_passive_tau = len(passive_torque_idx)
     to_add = 0
     if with_torque:
-        p = np.array(solution["x"][model.nbMuscles() * ns:-n_passive_tau * ns]).squeeze()
+        p = np.array(solution["x"][model.nbMuscles() * ns : -n_passive_tau * ns]).squeeze()
 
     else:
-        p = np.array(solution["x"][model.nbMuscles() * ns:]).squeeze()
+        p = np.array(solution["x"][model.nbMuscles() * ns :]).squeeze()
         pas_tau_mat = None
     p_tmp = None
     count = 0
     for p_idx, param in enumerate(params_to_optim):
         n_p = len(p_mapping[p_idx][0])
-        p_tmp = p[count:count + n_p] / scaling_factor[1][p_idx] if p_tmp is None else ca.vertcat(p_tmp,
-                                                                                                     p[
-                                                                                                     count:count + n_p] /
-                                                                                                     scaling_factor[1][
-                                                                                                         p_idx])
+        p_tmp = (
+            p[count : count + n_p] / scaling_factor[1][p_idx]
+            if p_tmp is None
+            else ca.vertcat(p_tmp, p[count : count + n_p] / scaling_factor[1][p_idx])
+        )
         count += n_p
     p_list = _return_param_from_mapping(p_mapping, p_tmp)
-    solver_out = {"n_iter": sol_nlp.stats()["iter_count"], "status": sol_nlp.stats()["success"], "return_status": sol_nlp.stats()["return_status"]}
+    solver_out = {
+        "n_iter": sol_nlp.stats()["iter_count"],
+        "status": sol_nlp.stats()["success"],
+        "return_status": sol_nlp.stats()["return_status"],
+    }
     return act, pas_tau_mat, p_list, emg, solver_out
 
+
 def len_fct(model, q):
-    #model.UpdateKinematicsCustom(q)
-    #model.updateMuscles(q, True)
+    # model.UpdateKinematicsCustom(q)
+    # model.updateMuscles(q, True)
     mus_list = MX.zeros(model.nbMuscles(), 1)
     for i in range(model.nbMuscles()):
-        #mus_list[i] = model.muscle(i).musculoTendonLength(model, q).to_mx()
+        # mus_list[i] = model.muscle(i).musculoTendonLength(model, q).to_mx()
         mus_list[i] = model.muscle(i).length(model, q).to_mx()
     return mus_list
+
 
 def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm=True, plot_length=True, color="b"):
     model = biorbd.Model(model_path)
@@ -1414,9 +1755,11 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
         for m in range(model.nbMuscles()):
             muscles_states[m].setActivation(mus_act[m])
             model.muscle(m).characteristics().setForceIsoMax(
-                model.muscle(m).characteristics().forceIsoMax().to_mx() * (p_f[m]))
+                model.muscle(m).characteristics().forceIsoMax().to_mx() * (p_f[m])
+            )
             model.muscle(m).characteristics().setOptimalLength(
-                model.muscle(m).characteristics().optimalLength().to_mx() * (p_lm[m]))
+                model.muscle(m).characteristics().optimalLength().to_mx() * (p_lm[m])
+            )
         muscles_force = model.muscleForces(muscles_states, q, qdot).to_mx()
         return model.muscularJointTorque(muscles_force, q, qdot).to_mx()
 
@@ -1438,14 +1781,18 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
     jac_l_num = np.zeros((model_ca.nbGeneralizedTorque(), model_ca.nbMuscles(), q.shape[1]))
     for i in range(q.shape[1]):
         for m in range(model_ca.nbMuscles()):
-            p_f_tmp = 1  #init_f_iso[m]
+            p_f_tmp = 1  # init_f_iso[m]
             p_lm_tmp = 1  # init_l_opt[m]
-            jac_f_num[:, m:m + 1, i] = ca.Function("pouet", [MX()], [
-                jac_fct_f(MX(q[:, i]), MX(q_dot[:, i]), MX.ones(model_ca.nbMuscles()) * 0.3, p_f_tmp, p_lm_tmp)])()[
-                                           "o0"][:, m]
-            jac_l_num[:, m:m + 1, i] = ca.Function("pouet_l", [MX()], [
-                jac_fct_l(MX(q[:, i]), MX(q_dot[:, i]), MX.ones(model_ca.nbMuscles()) * 0.3, p_f_tmp, p_lm_tmp)])()[
-                                           "o0"][:, m]
+            jac_f_num[:, m : m + 1, i] = ca.Function(
+                "pouet",
+                [MX()],
+                [jac_fct_f(MX(q[:, i]), MX(q_dot[:, i]), MX.ones(model_ca.nbMuscles()) * 0.3, p_f_tmp, p_lm_tmp)],
+            )()["o0"][:, m]
+            jac_l_num[:, m : m + 1, i] = ca.Function(
+                "pouet_l",
+                [MX()],
+                [jac_fct_l(MX(q[:, i]), MX(q_dot[:, i]), MX.ones(model_ca.nbMuscles()) * 0.3, p_f_tmp, p_lm_tmp)],
+            )()["o0"][:, m]
 
     [name.to_string() for name in model.nameDof()]
     colors = plt.cm.get_cmap("tab20", model.nbMuscles())
@@ -1464,8 +1811,8 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
             plt.title(model.muscleNames()[j].to_string())
     plt.legend([name.to_string() for name in model.nameDof()][6:])
 
-    #q = np.zeros_like(q)
-    #q[4, :] = np.linspace(-5 *3.14/180, 17 *3.14/180, q.shape[1])
+    # q = np.zeros_like(q)
+    # q[4, :] = np.linspace(-5 *3.14/180, 17 *3.14/180, q.shape[1])
     # passive_torque = np.zeros((model.nbGeneralizedTorque(), q.shape[1]))
     # k1 = -50
     # k2 = -2
@@ -1483,11 +1830,9 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
     # plt.figure("passive_force")
     # # plt.plot(q[4, :], passive_torque[4, :])
     # plt.plot(q[4, :], passive_torque_num[4, :])
-    #plt.show()
-    #q[4, :] = np.linspace(-5, 17, q.shape[1])
+    # plt.show()
+    # q[4, :] = np.linspace(-5, 17, q.shape[1])
     model_ca = biorbd_ca.Model(model_path)
-
-
 
     q_sym = ca.MX.sym("q", model_ca.nbQ())
     ml = len_fct(model_ca, q_sym)
@@ -1513,18 +1858,18 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
         muscle_states = model.stateSet()
         for m in range(model.nbMuscles()):
             muscle_states[m].setActivation(0.1)
-        #mus_torque[:, :, i] = model.muscularJointTorque(muscle_states, q[:, i], q_dot[:, i]).to_array()
+        # mus_torque[:, :, i] = model.muscularJointTorque(muscle_states, q[:, i], q_dot[:, i]).to_array()
         # length_ca[:, i] = cas_fct(ca.MX(q[:, i]))
         length_ca[:, i] = ca.Function("pouet", [MX()], [cas_fct(ca.MX(q[:, i]))])()["o0"].toarray().squeeze()
         for m in range(model.nbMuscles()):
             mus_tmp = biorbd.HillDeGrooteType(model.muscle(m))
-            #model.UpdateKinematicsCustom(q[:, i])
-            #model.updateMuscles(q[:, i], True)
+            # model.UpdateKinematicsCustom(q[:, i])
+            # model.updateMuscles(q[:, i], True)
             length[m, i] = model.muscle(m).length(model, q[:, i])  #
             velocity[m, i] = model.muscle(m).velocity(model, q[:, i], q_dot[:, i])
             l_opti = mus_tmp.characteristics().optimalLength()
-            if color == "r" and i ==0:
-                mus_tmp.characteristics().setOptimalLength(l_opti*0.8)
+            if color == "r" and i == 0:
+                mus_tmp.characteristics().setOptimalLength(l_opti * 0.8)
             mus_tmp.length(model, q[:, i])
             mus_tmp.velocity(model, q[:, i], q_dot[:, i], True)
             mus_tmp.computeFlPE()
@@ -1532,7 +1877,9 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
             mus_tmp.computeFvCE()
             mus_flce[m, i] = mus_tmp.FlCE(muscle_states[m]) * mus_tmp.characteristics().forceIsoMax()
             mus_fvce[m, i] = mus_tmp.FvCE() * mus_tmp.characteristics().forceIsoMax()
-            mus_f_tot[m, i] = mus_tmp.characteristics().forceIsoMax() * (0.5 * mus_tmp.FlCE(muscle_states[m]) * mus_tmp.FvCE())
+            mus_f_tot[m, i] = mus_tmp.characteristics().forceIsoMax() * (
+                0.5 * mus_tmp.FlCE(muscle_states[m]) * mus_tmp.FvCE()
+            )
             mus_passive[m, i] = mus_tmp.FlPE() * mus_tmp.characteristics().forceIsoMax()
     # for i in range(model.nbMuscles()):
     #     max_ma = np.max(moment_arm[i, ...])
@@ -1543,9 +1890,9 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
         for i in range(model.nbMuscles()):
             plt.subplot(6, 7, i + 1)
             plt.plot(mus_passive[i, :], color)
-            #plt.plot(mus_fvce[i, :], ".-", c=color)
+            # plt.plot(mus_fvce[i, :], ".-", c=color)
             plt.plot(mus_flce[i, :], ".-", c=color)
-            plt.plot(np.repeat(model.muscle(i).characteristics().forceIsoMax(), q.shape[1]),"--", c=color)
+            plt.plot(np.repeat(model.muscle(i).characteristics().forceIsoMax(), q.shape[1]), "--", c=color)
 
             plt.title(model.muscleNames()[i].to_string())
     if plot_moment_arm:
@@ -1578,21 +1925,30 @@ def check_muscle_sanity(model_path, q, q_dot, plot_passive=True, plot_moment_arm
         for i in range(model.nbMuscles()):
             plt.subplot(6, 7, i + 1)
             plt.plot(velocity[i, :] / max_vel, color)
-            #plt.plot(length_ca[i, :])
-            plt.plot(np.repeat(max_vel/ max_vel, q.shape[1]), "--", c=color)
+            # plt.plot(length_ca[i, :])
+            plt.plot(np.repeat(max_vel / max_vel, q.shape[1]), "--", c=color)
             plt.title(model.muscleNames()[i].to_string())
     if plot_length:
         plt.figure("length")
         for i in range(model.nbMuscles()):
             plt.subplot(6, 7, i + 1)
-            if i==9:
+            if i == 9:
                 print(model.muscle(i).characteristics().optimalLength())
             plt.plot(length[i, :] / model.muscle(i).characteristics().optimalLength(), color)
-            #plt.plot(length_ca[i, :])
-            plt.plot(np.repeat(model.muscle(i).characteristics().optimalLength()/ model.muscle(i).characteristics().optimalLength(), q.shape[1]), "--", c=color)
+            # plt.plot(length_ca[i, :])
+            plt.plot(
+                np.repeat(
+                    model.muscle(i).characteristics().optimalLength()
+                    / model.muscle(i).characteristics().optimalLength(),
+                    q.shape[1],
+                ),
+                "--",
+                c=color,
+            )
             plt.title(model.muscleNames()[i].to_string())
         # plt.ylim([0, 1])
-    #plt.show()
+    # plt.show()
+
 
 def _interpolate_data(markers_depth, shape):
     new_markers_depth_int = np.zeros((3, markers_depth.shape[1], shape))
@@ -1630,10 +1986,10 @@ def process_cycles(all_results, peaks=None, n_peaks=None, interpolation_size=120
                 break
             interp_function = _interpolate_data_2d if len(all_results[key2].shape) == 2 else _interpolate_data
             if array_tmp is None:
-                array_tmp = interp_function(all_results[key2][..., peaks[k]:peaks[k + 1]], interpolation_size)
+                array_tmp = interp_function(all_results[key2][..., peaks[k] : peaks[k + 1]], interpolation_size)
                 array_tmp = array_tmp[None, ...]
             else:
-                data_interp = interp_function(all_results[key2][..., peaks[k]:peaks[k + 1]], interpolation_size)
+                data_interp = interp_function(all_results[key2][..., peaks[k] : peaks[k + 1]], interpolation_size)
                 array_tmp = np.concatenate((array_tmp, data_interp[None, ...]), axis=0)
         dic_tmp[key2] = array_tmp
     key_to_check = ["q", "tau", "emg"]
@@ -1644,10 +2000,12 @@ def process_cycles(all_results, peaks=None, n_peaks=None, interpolation_size=120
     all_results["cycles"] = dic_tmp
     return all_results
 
+
 def _remove_outliers(data):
     new_data = np.zeros_like(data)
     std_outliers = np.std(data, axis=0)
     return new_data
+
 
 def _get_final_data(ocp_result, suffix, cycle, em_delay, peaks, n_frame_cycle, rate=120, ratio=1, random_idx_list=None):
     em_delay_frame = int(em_delay * rate)
@@ -1658,7 +2016,13 @@ def _get_final_data(ocp_result, suffix, cycle, em_delay, peaks, n_frame_cycle, r
             if "emg" in key:
                 ocp_result[key] = ocp_result[key][:, :-em_delay_frame] if em_delay != 0 else ocp_result[key][..., :]
     ocp_result = process_cycles(ocp_result, peaks, interpolation_size=rate, remove_outliers=False)
-    q, qdot, tau, f_ext, emg_proc = ocp_result["cycles"]["q" + suffix], ocp_result["cycles"]["qdot" + suffix], ocp_result["cycles"]["tau" + suffix], ocp_result["cycles"]["f_ext"], ocp_result["cycles"]["emg"]
+    q, qdot, tau, f_ext, emg_proc = (
+        ocp_result["cycles"]["q" + suffix],
+        ocp_result["cycles"]["qdot" + suffix],
+        ocp_result["cycles"]["tau" + suffix],
+        ocp_result["cycles"]["f_ext"],
+        ocp_result["cycles"]["emg"],
+    )
     if cycle > q.shape[0] - 1:
         raise ValueError("cycle should be less than the number of cycles")
     plt.figure("q_cycle")
@@ -1676,43 +2040,63 @@ def _get_final_data(ocp_result, suffix, cycle, em_delay, peaks, n_frame_cycle, r
         for j in range(q.shape[1]):
             plt.subplot(3, 4, j + 1)
             plt.plot(qdot[i, j, :])
-    q, qdot, tau, f_ext, emg_proc = q[random_idx_list, ...], qdot[random_idx_list, ...], tau[random_idx_list, ...], f_ext[random_idx_list, ...], emg_proc[random_idx_list, ...]
+    q, qdot, tau, f_ext, emg_proc = (
+        q[random_idx_list, ...],
+        qdot[random_idx_list, ...],
+        tau[random_idx_list, ...],
+        f_ext[random_idx_list, ...],
+        emg_proc[random_idx_list, ...],
+    )
     q_final = np.zeros((q.shape[1], n_frame_cycle * cycle))
-    qdot_final = np.zeros((qdot.shape[1], n_frame_cycle  * cycle))
+    qdot_final = np.zeros((qdot.shape[1], n_frame_cycle * cycle))
     tau_final = np.zeros((tau.shape[1], n_frame_cycle * cycle))
-    f_ext_final = np.zeros((f_ext.shape[1], n_frame_cycle  * cycle))
-    emg_proc_final = np.zeros((emg_proc.shape[1], n_frame_cycle  * cycle))
+    f_ext_final = np.zeros((f_ext.shape[1], n_frame_cycle * cycle))
+    emg_proc_final = np.zeros((emg_proc.shape[1], n_frame_cycle * cycle))
     for i in range(cycle):
-    #     q_filtered = OfflineProcessing().butter_lowpass_filter(q[i, :],
-    #                                                            6, 60, 2)
-    #     qdot_filtered = OfflineProcessing().butter_lowpass_filter(qdot[i, :],
-    #                                                            6, 60, 2)
-    #     tau_filtered = OfflineProcessing().butter_lowpass_filter(tau[i, :],
-    #                                                            6, 60, 2)
-        q_final[:, i * n_frame_cycle:(i + 1) * n_frame_cycle] = q[i, :, ::ratio]
-        qdot_final[:, i * n_frame_cycle:(i + 1) * n_frame_cycle] = qdot[i, :, ::ratio]
-        tau_final[:, i * n_frame_cycle:(i + 1) * n_frame_cycle] = tau[i, :, ::ratio]
-        f_ext_final[:, i * n_frame_cycle:(i + 1) * n_frame_cycle] = f_ext[i, :, ::ratio]
-        emg_proc_final[:, i * n_frame_cycle:(i + 1) * n_frame_cycle] = emg_proc[i, :, ::ratio]
+        #     q_filtered = OfflineProcessing().butter_lowpass_filter(q[i, :],
+        #                                                            6, 60, 2)
+        #     qdot_filtered = OfflineProcessing().butter_lowpass_filter(qdot[i, :],
+        #                                                            6, 60, 2)
+        #     tau_filtered = OfflineProcessing().butter_lowpass_filter(tau[i, :],
+        #                                                            6, 60, 2)
+        q_final[:, i * n_frame_cycle : (i + 1) * n_frame_cycle] = q[i, :, ::ratio]
+        qdot_final[:, i * n_frame_cycle : (i + 1) * n_frame_cycle] = qdot[i, :, ::ratio]
+        tau_final[:, i * n_frame_cycle : (i + 1) * n_frame_cycle] = tau[i, :, ::ratio]
+        f_ext_final[:, i * n_frame_cycle : (i + 1) * n_frame_cycle] = f_ext[i, :, ::ratio]
+        emg_proc_final[:, i * n_frame_cycle : (i + 1) * n_frame_cycle] = emg_proc[i, :, ::ratio]
     return q_final, qdot_final, tau_final, f_ext_final, emg_proc_final, random_idx_list
 
-def _apply_delay(q, qdot, tau, f_ext, emg_proc, em_delay, n_final, n_init, target_n_nodes, rate=120, init_down_sampling=1):
+
+def _apply_delay(
+    q, qdot, tau, f_ext, emg_proc, em_delay, n_final, n_init, target_n_nodes, rate=120, init_down_sampling=1
+):
     em_delay_frame = int(em_delay * rate)
     n_final = n_init + n_final
     emg_proc = emg_proc[:, ::init_down_sampling]
-    q, qdot, fext, tau = q[:, ::init_down_sampling], qdot[:, ::init_down_sampling], f_ext[:, ::init_down_sampling], tau[:,
-                                                                                                     ::init_down_sampling]
+    q, qdot, fext, tau = (
+        q[:, ::init_down_sampling],
+        qdot[:, ::init_down_sampling],
+        f_ext[:, ::init_down_sampling],
+        tau[:, ::init_down_sampling],
+    )
     emg_proc = emg_proc[:, n_init:n_final]
-    q, qdot, fext, tau = q[:, n_init:n_final], qdot[:, n_init:n_final], f_ext[:, n_init:n_final], tau[:,
-                                                                                                     n_init:n_final]
-    q, qdot, fext, tau = q[:, em_delay_frame:], qdot[:, em_delay_frame:], fext[:, em_delay_frame:], tau[:,
-                                                                                                    em_delay_frame:]
+    q, qdot, fext, tau = q[:, n_init:n_final], qdot[:, n_init:n_final], f_ext[:, n_init:n_final], tau[:, n_init:n_final]
+    q, qdot, fext, tau = (
+        q[:, em_delay_frame:],
+        qdot[:, em_delay_frame:],
+        fext[:, em_delay_frame:],
+        tau[:, em_delay_frame:],
+    )
     emg_proc = emg_proc[:, :-em_delay_frame] if em_delay_frame > 0 else emg_proc
     down_sampling = (q.shape[1]) // (target_n_nodes)
     down_sampling = max(down_sampling, 1)
     q_init, qdot_init, fext_init, tau_init = q.copy(), qdot.copy(), fext.copy(), tau.copy()
-    q, qdot, fext, tau = q[:, ::down_sampling], qdot[:, ::down_sampling], fext[:, ::down_sampling], tau[:,
-                                                                                                    ::down_sampling]
+    q, qdot, fext, tau = (
+        q[:, ::down_sampling],
+        qdot[:, ::down_sampling],
+        fext[:, ::down_sampling],
+        tau[:, ::down_sampling],
+    )
     emg_proc = emg_proc[:, ::down_sampling]
     # q_int = np.zeros_like(q)
     # q_dot_int = np.zeros_like(qdot)
@@ -1721,18 +2105,20 @@ def _apply_delay(q, qdot, tau, f_ext, emg_proc, em_delay, n_final, n_init, targe
     #     q_int[:, i] = q_init[:, idx+1]
     #     q_dot_int[:, i] = qdot_init[:, idx+1]
 
-    #state_int = np.concatenate((q_int, q_dot_int), axis=0)
-    return q, qdot, tau, fext, emg_proc #, state_int
+    # state_int = np.concatenate((q_int, q_dot_int), axis=0)
+    return q, qdot, tau, fext, emg_proc  # , state_int
 
 
 def _get_ratio(model, use_casadi=True):
-    ratio = [model.muscle(k).characteristics().tendonSlackLength() / model.muscle(
-        k).characteristics().optimalLength() for k in range(model.nbMuscles())]
+    ratio = [
+        model.muscle(k).characteristics().tendonSlackLength() / model.muscle(k).characteristics().optimalLength()
+        for k in range(model.nbMuscles())
+    ]
     return ratio
 
+
 def compute_id(q_init, model, f_ext):
-    q_filtered = OfflineProcessing().butter_lowpass_filter(q_init,
-                                                           6, 120, 2)
+    q_filtered = OfflineProcessing().butter_lowpass_filter(q_init, 6, 120, 2)
     qdot_new = np.zeros_like(q_init)
     qdot_new[:, 1:-1] = (q_filtered[:, 2:] - q_filtered[:, :-2]) / (2 / 120)
     qdot_new[:, 0] = q_filtered[:, 1] - q_filtered[:, 0]
@@ -1744,7 +2130,6 @@ def compute_id(q_init, model, f_ext):
     qddot_new[:, 1:-1] = (qdot_new[:, 2:] - qdot_new[:, :-2]) / (2 / 120)
     qddot_new[:, 0] = qdot_new[:, 1] - qdot_new[:, 0]
     qddot_new[:, -1] = qdot_new[:, -1] - qdot_new[:, -2]
-
 
     # for i in range(1, qdot_new.shape[1] - 2):
     #     qddot_new[:, i] = (qdot_new[:, i + 1] - qdot_new[:, i - 1]) / (2 / 120)
@@ -1765,15 +2150,16 @@ def compute_id(q_init, model, f_ext):
             tau[:, i] = model.InverseDynamics(q_filtered[:, i], qdot_new[:, i], qddot_new[:, i], ext).to_array()
         else:
             tau[:, i] = model.InverseDynamics(q_filtered[:, i], qdot_new[:, i], qddot_new[:, i]).to_array()
-        #tau[:, i] -= model.passiveJointTorque(q_filtered[:, i], qdot_new[:, i]).to_array()
-        #tau[3, i] += 15 * np.exp(-40*q_filtered[3, i] + 18) + 1
+        # tau[:, i] -= model.passiveJointTorque(q_filtered[:, i], qdot_new[:, i]).to_array()
+        # tau[3, i] += 15 * np.exp(-40*q_filtered[3, i] + 18) + 1
     return q_filtered, qdot_new, qddot_new, tau
+
 
 def generate_random_idx(n_cycles, batch, n_data):
     random.seed(10)
     random_idx_dic = {}
     for c in n_cycles:
-        combinations = list(itertools.combinations(list(range(1, int(n_data-1))), c))
+        combinations = list(itertools.combinations(list(range(1, int(n_data - 1))), c))
         random_idx = random.sample(range(0, len(combinations)), batch)
         random_idx_dic[c] = [list(combinations[i]) for i in random_idx]
     return random_idx_dic
@@ -1822,44 +2208,46 @@ def main():
     #              'DELT3'
     #              ]
 
-    muscle_list = ['TrapeziusScapula_M',  # 0
-                   'TrapeziusScapula_S',  # 1
-                   'TrapeziusScapula_I',  # 2
-                   'Rhomboideus_S',  # 3
-                   'Rhomboideus_I',  # 3
-                   'LevatorScapulae',  # 4
-                   'PectoralisMinor',  # 5
-                   'TrapeziusClavicle_S',  # 6
-                   'SerratusAnterior_I',  # 7
-                   'SerratusAnterior_M',  # 7
-                   'SerratusAnterior_S',  # 7
-                   'Coracobrachialis',  # 8
-                   'DeltoideusScapula_P',  # 9
-                   'DeltoideusScapula_M',  # 10
-                   'TeresMajor',  # 11
-                   'Infraspinatus_I',  # 12
-                   'Infraspinatus_S',  # 12
-                   'TeresMinor',  # 13
-                   'Subscapularis_S',  # 14
-                   'Subscapularis_M',  # 14
-                   'Subscapularis_I',  # 14
-                   'Supraspinatus_P',  # 15
-                   'Supraspinatus_A',  # 15
-                   'DeltoideusClavicle_A',  # 16
-                   'PectoralisMajorClavicle_S',  # 17
-                   'LatissimusDorsi_S',  # 18
-                   'LatissimusDorsi_M',  # 18
-                   'LatissimusDorsi_I',  # 18
-                   'PectoralisMajorThorax_I',  # 19
-                   'PectoralisMajorThorax_M',  # 19
-                   # "BRD",
-                   # "PT",
-                   # "PQ"
-                   'TRI_long',  # 20
-                   'TRI_lat',  # 20
-                   'TRI_med',  # 20
-                   'BIC_long',  # 21
-                   'BIC_brevis', ]  # 21
+    muscle_list = [
+        "TrapeziusScapula_M",  # 0
+        "TrapeziusScapula_S",  # 1
+        "TrapeziusScapula_I",  # 2
+        "Rhomboideus_S",  # 3
+        "Rhomboideus_I",  # 3
+        "LevatorScapulae",  # 4
+        "PectoralisMinor",  # 5
+        "TrapeziusClavicle_S",  # 6
+        "SerratusAnterior_I",  # 7
+        "SerratusAnterior_M",  # 7
+        "SerratusAnterior_S",  # 7
+        "Coracobrachialis",  # 8
+        "DeltoideusScapula_P",  # 9
+        "DeltoideusScapula_M",  # 10
+        "TeresMajor",  # 11
+        "Infraspinatus_I",  # 12
+        "Infraspinatus_S",  # 12
+        "TeresMinor",  # 13
+        "Subscapularis_S",  # 14
+        "Subscapularis_M",  # 14
+        "Subscapularis_I",  # 14
+        "Supraspinatus_P",  # 15
+        "Supraspinatus_A",  # 15
+        "DeltoideusClavicle_A",  # 16
+        "PectoralisMajorClavicle_S",  # 17
+        "LatissimusDorsi_S",  # 18
+        "LatissimusDorsi_M",  # 18
+        "LatissimusDorsi_I",  # 18
+        "PectoralisMajorThorax_I",  # 19
+        "PectoralisMajorThorax_M",  # 19
+        # "BRD",
+        # "PT",
+        # "PQ"
+        "TRI_long",  # 20
+        "TRI_lat",  # 20
+        "TRI_med",  # 20
+        "BIC_long",  # 21
+        "BIC_brevis",
+    ]  # 21
 
     # emg_names = ["PectoralisMajorThorax",
     #              "BIC",
@@ -1877,10 +2265,11 @@ def main():
     #     muscle_track_idx.append([j for j in range(len(muscle_list)) if emg_names[i] in muscle_list[j]])
     # muscle_track_idx = sum(muscle_track_idx, [])
 
-    #muscle_list = [model.muscleNames()[i].to_string() for i in range(model.nbMuscles())]
+    # muscle_list = [model.muscleNames()[i].to_string() for i in range(model.nbMuscles())]
     from biosiglive import load
     from math import ceil
     import matplotlib.pyplot as plt
+
     perform_optim = True
     perform_static_optim = True
     # sensix_data = load(f"data/active_global_ref.bio")
@@ -1907,14 +2296,15 @@ def main():
     participants = [f"P{i}" for i in range(10, 15)]
     if "P12" in participants:
         participants.pop(participants.index("P12"))
-    #participants.pop(participants.index("P15"))
-    #participants.pop(participants.index("P16"))
-    #biorbd_model_path = "/mnt/shared/Projet_hand_bike_markerless/RGBD/P10/wu_bras_gauche_depth.bioMod"
+    # participants.pop(participants.index("P15"))
+    # participants.pop(participants.index("P16"))
+    # biorbd_model_path = "/mnt/shared/Projet_hand_bike_markerless/RGBD/P10/wu_bras_gauche_depth.bioMod"
     remove_old_data = True
     from biosiglive import save
     from bioptim import SolutionMerge
+
     n_batch = 1
-    n_cycles = [1,2,3,4,5]
+    n_cycles = [1, 2, 3, 4, 5]
     random_idx_dic = {}
     for batch in range(0, n_batch):
         for part in participants:
@@ -1927,20 +2317,26 @@ def main():
                 model = "normal_500_down_b1"
                 # trials = [f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/{trial}/reoriented_dlc_markers.bio"]
                 prefix = "/mnt/shared"
-                init_data_file = prefix + f"/Projet_hand_bike_markerless/process_data/{part}/result_biomech_{trial_short}_{model}_with_wu.bio"
-                init_data_file = prefix + f"/Projet_hand_bike_markerless/process_data/{part}/result_biomech_{trial_short}_{model}.bio"
+                init_data_file = (
+                    prefix
+                    + f"/Projet_hand_bike_markerless/process_data/{part}/result_biomech_{trial_short}_{model}_with_wu.bio"
+                )
+                init_data_file = (
+                    prefix
+                    + f"/Projet_hand_bike_markerless/process_data/{part}/result_biomech_{trial_short}_{model}.bio"
+                )
 
                 source = "dlc_1"
-                #biorbd_model_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial_short}_model_scaled_{source[:-2]}_ribs_new_seth_param_with_root.bioMod"
+                # biorbd_model_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial_short}_model_scaled_{source[:-2]}_ribs_new_seth_param_with_root.bioMod"
                 biorbd_model_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial_short}_model_scaled_{source[:-2]}_ribs_new_seth_param.bioMod"
-                #biorbd_model_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial_short}_model_scaled_{source[:-2]}_test_wu_fixed_param.bioMod"
+                # biorbd_model_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial_short}_model_scaled_{source[:-2]}_test_wu_fixed_param.bioMod"
                 file_name = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/{trial}/result_mhe_torque_driven_{trial_short}_comparison.bio"
                 dyn = ["fd"]
-                if perform_optim and batch == 0 :
+                if perform_optim and batch == 0:
                     tic = 0
                     kalman_data = load(init_data_file)
-                    n_start = 10  #int(7) + 8
-                    n_stop = 810*2  #int(390) - 157
+                    n_start = 10  # int(7) + 8
+                    n_stop = 810 * 2  # int(390) - 157
                     with_mhe = True
                     data_rate = 60
                     final_time = (n_stop - n_start - 1) / data_rate if not with_mhe else 0.1
@@ -1966,39 +2362,43 @@ def main():
                     kalman_data[source][f"tracked_markers"][:, ia_idx, :] = mark_ts
                     kalman_data[source][f"tracked_markers"][:, ts_idx, :] = mark_ia
                     markers_init = kalman_data[source][f"tracked_markers"][:, :, n_start:n_stop][..., ::2]
-                    ribs_idx= names.index("ribs")
-                    #markers_init = np.delete(markers_init, ribs_idx, axis=1)
+                    ribs_idx = names.index("ribs")
+                    # markers_init = np.delete(markers_init, ribs_idx, axis=1)
 
                     # markers_init[:, 1, :] = np.repeat(markers_init[:, 1, 0][:, np.newaxis], markers_init.shape[2], axis=1)
                     if model.nbDof() > q_init.shape[0]:
                         q_init = np.concatenate((np.zeros((model.nbQ() - 10, q_init.shape[1])), q_init), axis=0)
-                        q_init = np.concatenate((q_init, np.zeros((model.nbQ() - 10, q_init.shape[1])), q_dot_init), axis=0)
+                        q_init = np.concatenate(
+                            (q_init, np.zeros((model.nbQ() - 10, q_init.shape[1])), q_dot_init), axis=0
+                        )
                     else:
                         q_init = np.concatenate((q_init, q_dot_init), axis=0)
                     # q_init = np.concatenate((q_init[3:, :], q_dot_init[3:, :]), axis=0)
-                    peaks = [int(peak/2) for peak in kalman_data["peaks"]]
-                    ocp = prepare_ocp(biorbd_model_path=biorbd_model_path,
-                                      final_time=final_time,
-                                      n_shooting=n_shooting,
-                                      use_sx=with_mhe,
-                                      n_threads=6,
-                                      with_muscle=False,
-                                      target=markers_init,
-                                      q_init=q_init,
-                                      f_ext=f_ext,
-                                      with_f_ext=with_f_ext,
-                                      mhe=with_mhe,
-                                      track_previous=track_previous,
-                                      # params=np.ones((6,1))
-                                      )
+                    peaks = [int(peak / 2) for peak in kalman_data["peaks"]]
+                    ocp = prepare_ocp(
+                        biorbd_model_path=biorbd_model_path,
+                        final_time=final_time,
+                        n_shooting=n_shooting,
+                        use_sx=with_mhe,
+                        n_threads=6,
+                        with_muscle=False,
+                        target=markers_init,
+                        q_init=q_init,
+                        f_ext=f_ext,
+                        with_f_ext=with_f_ext,
+                        mhe=with_mhe,
+                        track_previous=track_previous,
+                        # params=np.ones((6,1))
+                    )
                     if with_mhe:
+
                         def update_functions(mhe, t, _):
                             def target_mark(i: int):
                                 # return kalman_data["q"][:, n_start:n_stop][:, i : i + n_shooting + 1]
-                                return markers_init[:, :, i: i + n_shooting + 1]
+                                return markers_init[:, :, i : i + n_shooting + 1]
 
                             def target_f_ext(i: int):
-                                return f_ext[:, i: i + n_shooting + 1]
+                                return f_ext[:, i : i + n_shooting + 1]
 
                             if with_f_ext:
                                 mhe.update_objectives_target(target=target_f_ext(t), list_index=2)
@@ -2007,10 +2407,16 @@ def main():
                                 if track_previous:
                                     if ocp.sol is not None:
                                         previous_sol = ocp.sol.decision_states(to_merge=SolutionMerge.NODES)
-                                    q_to_track = previous_sol[
-                                        "q"] if ocp.sol is not None else q_init[:model.nbQ(), t:t + n_shooting + 1]
-                                    qdot_to_track = previous_sol[
-                                        "qdot"] if ocp.sol is not None else q_init[model.nbQ():, t:t + n_shooting + 1]
+                                    q_to_track = (
+                                        previous_sol["q"]
+                                        if ocp.sol is not None
+                                        else q_init[: model.nbQ(), t : t + n_shooting + 1]
+                                    )
+                                    qdot_to_track = (
+                                        previous_sol["qdot"]
+                                        if ocp.sol is not None
+                                        else q_init[model.nbQ() :, t : t + n_shooting + 1]
+                                    )
                                     mhe.update_objectives_target(target=q_to_track, list_index=6)
                                     mhe.update_objectives_target(target=qdot_to_track, list_index=7)
                             else:
@@ -2018,18 +2424,28 @@ def main():
                                 mhe.update_objectives_target(target=target_mark(t)[:, 3:, :], list_index=3)
                                 if track_previous:
                                     previous_sol = ocp.sol.decision_states(to_merge=SolutionMerge.NODES)
-                                    q_to_track = previous_sol[
-                                        "q"] if ocp.sol is not None else q_init[:model.nbQ(), t:t + n_shooting + 1]
-                                    qdot_to_track = previous_sol[
-                                        "qdot"] if ocp.sol is not None else q_init[model.nbQ():, t:t + n_shooting + 1]
+                                    q_to_track = (
+                                        previous_sol["q"]
+                                        if ocp.sol is not None
+                                        else q_init[: model.nbQ(), t : t + n_shooting + 1]
+                                    )
+                                    qdot_to_track = (
+                                        previous_sol["qdot"]
+                                        if ocp.sol is not None
+                                        else q_init[model.nbQ() :, t : t + n_shooting + 1]
+                                    )
                                     mhe.update_objectives_target(target=q_to_track, list_index=6)
                                     mhe.update_objectives_target(target=qdot_to_track, list_index=7)
-                            return t < q_init.shape[1] - (n_shooting + 1)  # True if there are still some frames to reconstruct
+                            return t < q_init.shape[1] - (
+                                n_shooting + 1
+                            )  # True if there are still some frames to reconstruct
                             # return t < 15 # True if there are still some frames to reconstruct
+
                         import time
+
                         tic = time.time()
                         sol = ocp.solve(update_functions, **get_solver_options(Solver.ACADOS()))
-                        #integrate = sol.integrate()
+                        # integrate = sol.integrate()
                         q_int = np.zeros_like(q_dot_init)
                         q_dot_int = np.zeros_like(q_dot_init)
                         # for i in range(len(integrate["q"])):
@@ -2043,52 +2459,52 @@ def main():
                         solver.set_tol(1e-5)
                         solver.set_maximum_iterations(1000)
                         sol = ocp.solve(solver=solver)
-                        #integrate = sol.integrate()
+                        # integrate = sol.integrate()
                         q_int = np.zeros_like(q_dot_init)
                         q_dot_int = np.zeros_like(q_dot_init)
-                        #for i in range(len(integrate["q"])):
+                        # for i in range(len(integrate["q"])):
                         #    q_int[:, i] = integrate["q"][i][:, 0]
                         #    q_dot_int[:, i] = integrate["qdot"][i][:, 0]
                     # --- Solve the program using ACADOS --- #
                     merged_states = sol.decision_states(to_merge=SolutionMerge.NODES)
                     merged_controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
-                    #q_id, q_dot_id, q_ddot_id, tau_id = compute_id(merged_states["q"], model, f_ext)
+                    # q_id, q_dot_id, q_ddot_id, tau_id = compute_id(merged_states["q"], model, f_ext)
 
-                    save_dic = {"q": merged_states["q"],
-                                "qdot": merged_states["qdot"],
-                                "q_int": q_int,
-                                "qdot_int":q_dot_int,
-                                "tau": merged_controls["tau"],
-                                "q_init": kalman_data[source]["q_raw"][:, n_start:n_stop][..., ::2][:, : - (n_shooting + 1)],
-                                "qdot_init": kalman_data[source]["q_dot"][:, n_start:n_stop][..., ::2][:, : - (n_shooting + 1)],
-                                # "tau_init": kalman_data[source]["tau"][:, n_start:n_stop - (n_shooting + 1)],
-                                "q_id": q_id[:, :- (n_shooting)],
-                                "qdot_id": q_dot_id[:, :- (n_shooting)],
-                                "qddot_id": q_ddot_id[:, :- (n_shooting)],
-                                "tau_id": tau_id[:, :- (n_shooting)],
-                                "markers": markers_init[:, :, :-(n_shooting+1)],
-                                "emg": kalman_data["emg"][:, n_start:n_stop][..., ::2][:, :- (n_shooting + 1)],
-                                "peaks": peaks,
-                                "mhe": with_mhe,
-                                "n_shooting": n_shooting,
-                                "mhe_time": final_time,
-                                "n_start": n_start,
-                                "n_stop": n_stop,
-                                "init_f_ext" :  None,
-                                "total_time_mhe": time.time() - tic,
+                    save_dic = {
+                        "q": merged_states["q"],
+                        "qdot": merged_states["qdot"],
+                        "q_int": q_int,
+                        "qdot_int": q_dot_int,
+                        "tau": merged_controls["tau"],
+                        "q_init": kalman_data[source]["q_raw"][:, n_start:n_stop][..., ::2][:, : -(n_shooting + 1)],
+                        "qdot_init": kalman_data[source]["q_dot"][:, n_start:n_stop][..., ::2][:, : -(n_shooting + 1)],
+                        # "tau_init": kalman_data[source]["tau"][:, n_start:n_stop - (n_shooting + 1)],
+                        "q_id": q_id[:, :-(n_shooting)],
+                        "qdot_id": q_dot_id[:, :-(n_shooting)],
+                        "qddot_id": q_ddot_id[:, :-(n_shooting)],
+                        "tau_id": tau_id[:, :-(n_shooting)],
+                        "markers": markers_init[:, :, : -(n_shooting + 1)],
+                        "emg": kalman_data["emg"][:, n_start:n_stop][..., ::2][:, : -(n_shooting + 1)],
+                        "peaks": peaks,
+                        "mhe": with_mhe,
+                        "n_shooting": n_shooting,
+                        "mhe_time": final_time,
+                        "n_start": n_start,
+                        "n_stop": n_stop,
+                        "init_f_ext": None,
+                        "total_time_mhe": time.time() - tic,
                     }
 
                     if with_f_ext:
                         save_dic["f_ext"] = merged_controls["f_ext"]
-                        save_dic["init_f_ext"] = f_ext[:, :-(n_shooting + 1)]
+                        save_dic["init_f_ext"] = f_ext[:, : -(n_shooting + 1)]
 
                     # if with_f_ext:
                     #     save_dic["fext"] = sol.controls["f_ext"],
 
-                    save(save_dic, file_name,
-                         safe=False)
+                    save(save_dic, file_name, safe=False)
                     # integrated_sol = sol.integrate()
-                    #sol.graphs()
+                    # sol.graphs()
                 if not perform_static_optim:
                     continue
 
@@ -2103,6 +2519,7 @@ def main():
                     #                   -sensix_data["RFX"],
                     #                   sensix_data["RFZ"]])
                     from biosiglive import OfflineProcessing, OfflineProcessingMethod
+
                     # trials_init = [
                     #     "data_flex_poid_2kg.bio",
                     #     "data_abd_poid_2kg.bio",
@@ -2110,12 +2527,17 @@ def main():
                     # ]
                     ocp_result = load(trial)
                     peaks = ocp_result["peaks"]
-                    first_peak_idx = np.where(ocp_result["n_start"]/2<np.array(peaks))[0][0]
-                    last_peak_idx = np.where(ocp_result["n_stop"]/2>np.array(peaks))[0][-1]
-                    peaks = np.array(peaks[first_peak_idx:last_peak_idx]).astype(int) - int(ocp_result["n_start"]/2)
+                    first_peak_idx = np.where(ocp_result["n_start"] / 2 < np.array(peaks))[0][0]
+                    last_peak_idx = np.where(ocp_result["n_stop"] / 2 > np.array(peaks))[0][-1]
+                    peaks = np.array(peaks[first_peak_idx:last_peak_idx]).astype(int) - int(ocp_result["n_start"] / 2)
                     q = ocp_result["q"]
                     rate = 60
-                    process_cycles(ocp_result, peaks, interpolation_size=rate, remove_outliers=False,)
+                    process_cycles(
+                        ocp_result,
+                        peaks,
+                        interpolation_size=rate,
+                        remove_outliers=False,
+                    )
                     n_cycle_data = ocp_result["cycles"]["q"].shape[0]
                     if random_idx_dic == {}:
                         random_idx_dic = generate_random_idx(n_cycles, n_batch, n_cycle_data)
@@ -2154,7 +2576,10 @@ def main():
                     plt.figure("angle")
                     for i in range(q.shape[0]):
                         plt.subplot(ceil(q.shape[0] / 4), 4, i + 1)
-                        plt.plot(q_init[i, :], "r", )
+                        plt.plot(
+                            q_init[i, :],
+                            "r",
+                        )
                         plt.plot(q[i, :])
                     #
                     # plt.figure("angle_crank")
@@ -2163,7 +2588,10 @@ def main():
                     plt.figure("vitesse")
                     for i in range(q.shape[0]):
                         plt.subplot(ceil(q.shape[0] / 4), 4, i + 1)
-                        plt.plot(q_dot_id[i, :], "r", )
+                        plt.plot(
+                            q_dot_id[i, :],
+                            "r",
+                        )
                         plt.plot(ocp_result["qdot"][i, :])
 
                     plt.figure("tau")
@@ -2182,7 +2610,11 @@ def main():
                         plt.figure("force")
                         for i in range(f_ext.shape[0]):
                             plt.subplot(ceil(f_ext.shape[0] / 4), 4, i + 1)
-                            plt.plot(ocp_result["init_f_ext"][i, :], "r", label="sensix", )
+                            plt.plot(
+                                ocp_result["init_f_ext"][i, :],
+                                "r",
+                                label="sensix",
+                            )
                             plt.plot(f_ext[i, :])
                     # plt.legend()
 
@@ -2192,19 +2624,28 @@ def main():
                     #     plt.plot(kalman_data["markers"][1, i, n_start:n_stop])
                     #     plt.plot(kalman_data["markers"][2, i, n_start:n_stop])
                     #     plt.plot(kalman_data["markers"][0 , i, n_start:n_stop])
-                    #plt.show()
+                    # plt.show()
                     import biorbd_casadi as biorbd_ca
 
                     # forward_function, next_x = _return_forward_function(biorbd_ca.Model(biorbd_model_path))
                     em_delay = 0
                     rate = 60
                     n_frame_cycle = 15
-                    ratio = int(rate/n_frame_cycle)
+                    ratio = int(rate / n_frame_cycle)
                     biorbd_model = biorbd_ca.Model(biorbd_model_path)
                     for cycle in n_cycles:
                         random_list_tmp = random_idx_dic[cycle][batch]
                         for dy in dyn:
-                            print("processing part :", part, "for dynamics : ", dy, "for n_cycles: ", cycle, "n_batch: ", batch)
+                            print(
+                                "processing part :",
+                                part,
+                                "for dynamics : ",
+                                dy,
+                                "for n_cycles: ",
+                                cycle,
+                                "n_batch: ",
+                                batch,
+                            )
                             from_id = dy == "id"
                             suffix = "_id" if from_id else ""
                             file_suffix = "id" if from_id else "fd"
@@ -2224,22 +2665,23 @@ def main():
                             use_p_mapping = 0  # 0 = no, 1 = mapping, 2 = mapping as constrain
                             use_ratio_tracking = True
                             torque_as_constraint = False
-                            optim_param_list = ["f_iso",
-                                                "lm_optim",
-                                                ]  # ["f_iso", "lt_slack"]
+                            optim_param_list = [
+                                "f_iso",
+                                "lm_optim",
+                            ]  # ["f_iso", "lt_slack"]
 
                             param_bounds = [[0, 1] for _ in optim_param_list]
                             p_init = [1]
                             all_muscle_len = None
                             for p_idx, param in enumerate(optim_param_list):
                                 if param == "f_iso":
-                                    param_bounds[p_idx] = [0.5, 2.5] #[0.5, 5]
+                                    param_bounds[p_idx] = [0.5, 2.5]  # [0.5, 5]
                                 if param == "lm_optim":
                                     eigen_model = biorbd.Model(biorbd_model_path)
                                     all_muscle_len = _get_all_muscle_len(eigen_model, q)
-                                    param_bounds[p_idx] = [0.5, 2] # [0.2, 2.8]
+                                    param_bounds[p_idx] = [0.5, 2]  # [0.2, 2.8]
                                 if param == "lt_slack":
-                                    param_bounds[p_idx] = [0.8, 1.2] #[0.5, 2.5]
+                                    param_bounds[p_idx] = [0.8, 1.2]  # [0.5, 2.5]
 
                             p_mapping = [list(range(biorbd_model.nbMuscles())), list(range(biorbd_model.nbMuscles()))]
                             p_mapping_list = [p_mapping] * len(optim_param_list)
@@ -2266,38 +2708,50 @@ def main():
                                 #                 17, 18, 18, 19, 19, 19, 20, 20]
                                 p_mapping = [list(range(max(list_mapping) + 1)), list_mapping]
                                 p_mapping_list[optim_param_list.index("f_iso")] = p_mapping
-                            #new_path = _update_params(biorbd_model_path,
+                            # new_path = _update_params(biorbd_model_path,
                             #                f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_{trial_short}_{file_suffix}_{cycle}_test.bio",
                             #                with_casadi=False,
                             #                ratio=True,
                             #                suffix=f"{file_suffix}_{cycle}"
                             #                )
-                            check_muscle_sanity(biorbd_model_path, q, qdot, plot_passive=True, plot_moment_arm=True, plot_length=True, color="r")
-                            #check_muscle_sanity(new_path, q, qdot, plot_passive=True, plot_moment_arm=True, plot_length=True)
+                            check_muscle_sanity(
+                                biorbd_model_path,
+                                q,
+                                qdot,
+                                plot_passive=True,
+                                plot_moment_arm=True,
+                                plot_length=True,
+                                color="r",
+                            )
+                            # check_muscle_sanity(new_path, q, qdot, plot_passive=True, plot_moment_arm=True, plot_length=True)
                             plt.show()
 
-
                             import time
+
                             tic = time.time()
-                            emg_names = ["PectoralisMajorThorax",
-                                         "BIC",
-                                         "TRI",
-                                         "LatissimusDorsi",
-                                         'TrapeziusScapula_S',
-                                         #'TrapeziusClavicle',
-                                         "DeltoideusClavicle_A",
-                                         'DeltoideusScapula_M',
-                                          'DeltoideusScapula_P']
-                            if part == 'P11':
-                                emg_names = ["PectoralisMajorThorax",
-                                             "BIC",
-                                             "TRI",
-                                             #"LatissimusDorsi",
-                                             'TrapeziusScapula_S',
-                                             #'TrapeziusClavicle',
-                                             "DeltoideusClavicle_A",
-                                             'DeltoideusScapula_M',
-                                             'DeltoideusScapula_P']
+                            emg_names = [
+                                "PectoralisMajorThorax",
+                                "BIC",
+                                "TRI",
+                                "LatissimusDorsi",
+                                "TrapeziusScapula_S",
+                                #'TrapeziusClavicle',
+                                "DeltoideusClavicle_A",
+                                "DeltoideusScapula_M",
+                                "DeltoideusScapula_P",
+                            ]
+                            if part == "P11":
+                                emg_names = [
+                                    "PectoralisMajorThorax",
+                                    "BIC",
+                                    "TRI",
+                                    # "LatissimusDorsi",
+                                    "TrapeziusScapula_S",
+                                    #'TrapeziusClavicle',
+                                    "DeltoideusClavicle_A",
+                                    "DeltoideusScapula_M",
+                                    "DeltoideusScapula_P",
+                                ]
                             # emg_names = ["PECM1",
                             #              "bic",
                             #              "tri",
@@ -2311,62 +2765,99 @@ def main():
                             muscle_list = [name.to_string() for name in biorbd_model.muscleNames()]
                             muscle_track_idx = []
                             for i in range(len(emg_names)):
-                                muscle_track_idx.append([j for j in range(len(muscle_list)) if emg_names[i] in muscle_list[j]])
+                                muscle_track_idx.append(
+                                    [j for j in range(len(muscle_list)) if emg_names[i] in muscle_list[j]]
+                                )
                             muscle_track_idx = sum(muscle_track_idx, [])
-                            #passive_torque_idx = [3, 5, 6, 7, 8, 9, 10, 11]
+                            # passive_torque_idx = [3, 5, 6, 7, 8, 9, 10, 11]
                             # optim_passive_torque = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12] # no_root
                             optim_passive_torque = [i for i in range(q.shape[0] - 10, q.shape[0])]
 
-                            #optim_passive_torque = [0, 1, 2,  5, 6,7,8,9]
+                            # optim_passive_torque = [0, 1, 2,  5, 6,7,8,9]
                             ignore_dof = [9]
-                            #tau[-1, :] = np.zeros((1, tau.shape[1]))
+                            # tau[-1, :] = np.zeros((1, tau.shape[1]))
                             if perform_static_optim:
-                                q, qdot, tau, f_ext, emg_proc, random_list_tmp = _get_final_data(ocp_result,
-                                                                                                 suffix, cycle, em_delay,
-                                                                                                 peaks, n_frame_cycle, rate,
-                                                                                                 ratio, random_list_tmp)
+                                q, qdot, tau, f_ext, emg_proc, random_list_tmp = _get_final_data(
+                                    ocp_result,
+                                    suffix,
+                                    cycle,
+                                    em_delay,
+                                    peaks,
+                                    n_frame_cycle,
+                                    rate,
+                                    ratio,
+                                    random_list_tmp,
+                                )
                                 scale_params = [1] * len(param_bounds)
                                 scale_params[0] = 1
                                 scaling_factor = (1, scale_params, 1)
                                 # q[6:11, :] = np.zeros_like(q[6:11, :])
                                 # qdot[6:11, :] = np.zeros_like(q[6:11, :])
                                 # tau[6:11, :] = np.zeros_like(q[6:11, :])
-                                a, pas_tau, p, emg, solver_out = _perform_static_optim_parameters(emg_proc, biorbd_model_path, q, qdot, tau,
-                                                                                      f_ext=f_ext,
-                                                                                      muscle_track_idx=muscle_track_idx,
-                                                                                      use_p_mapping=use_p_mapping,
-                                                                                      with_param=with_param,
-                                                                                      emg_init=emg_proc,
-                                                                                      mvc_normalized=True,
-                                                                                      with_torque=with_torque,
-                                                                                      torque_as_constraint=torque_as_constraint,
-                                                                                      dynamics_as_constraint=False,
-                                                                                      scaling_factor=scaling_factor,
-                                                                                      muscle_list=muscle_list,
-                                                                                      p_mapping=p_mapping_list,
-                                                                                      use_casadi_fct=True,
-                                                                                      p_init=1,
-                                                                                      emg_names=emg_names,
-                                                                                      params_to_optim=optim_param_list,
-                                                                                      use_ratio_tracking=use_ratio_tracking,
-                                                                                      passive_torque_idx=optim_passive_torque,
-                                                                                      param_bounds=param_bounds,
-                                                                                      state_int=state_int,
-                                                                                      all_muscle_len=all_muscle_len,
-                                                                                        ignore_dof=None,
-                                                                                      )
+                                a, pas_tau, p, emg, solver_out = _perform_static_optim_parameters(
+                                    emg_proc,
+                                    biorbd_model_path,
+                                    q,
+                                    qdot,
+                                    tau,
+                                    f_ext=f_ext,
+                                    muscle_track_idx=muscle_track_idx,
+                                    use_p_mapping=use_p_mapping,
+                                    with_param=with_param,
+                                    emg_init=emg_proc,
+                                    mvc_normalized=True,
+                                    with_torque=with_torque,
+                                    torque_as_constraint=torque_as_constraint,
+                                    dynamics_as_constraint=False,
+                                    scaling_factor=scaling_factor,
+                                    muscle_list=muscle_list,
+                                    p_mapping=p_mapping_list,
+                                    use_casadi_fct=True,
+                                    p_init=1,
+                                    emg_names=emg_names,
+                                    params_to_optim=optim_param_list,
+                                    use_ratio_tracking=use_ratio_tracking,
+                                    passive_torque_idx=optim_passive_torque,
+                                    param_bounds=param_bounds,
+                                    state_int=state_int,
+                                    all_muscle_len=all_muscle_len,
+                                    ignore_dof=None,
+                                )
                                 from biosiglive import save
-                                if os.path.exists(optim_param_file) and remove_old_data and perform_static_optim and batch == 0:
-                                    os.remove(optim_param_file)
-                                save({"a": a, "pas_tau": pas_tau, "p": p, "emg": emg, "q": q, "qdot": qdot, "scaling_factor": scaling_factor,
-                                     "p_mapping": list_mapping, "p_init": 1, "solving_time": time.time() - tic, "optimized_params": optim_param_list,
-                                     "tracked_torque": tau, "muscle_track_idx": muscle_track_idx,
-                                     "param_bounds": param_bounds, "solver_out": solver_out, "n_frame_cycle": n_frame_cycle,
-                                      "list_cycle": random_list_tmp}, optim_param_file,
-                                    safe=False,
-                                     add_data=True)
 
-                            #_update_params(biorbd_model_path,
+                                if (
+                                    os.path.exists(optim_param_file)
+                                    and remove_old_data
+                                    and perform_static_optim
+                                    and batch == 0
+                                ):
+                                    os.remove(optim_param_file)
+                                save(
+                                    {
+                                        "a": a,
+                                        "pas_tau": pas_tau,
+                                        "p": p,
+                                        "emg": emg,
+                                        "q": q,
+                                        "qdot": qdot,
+                                        "scaling_factor": scaling_factor,
+                                        "p_mapping": list_mapping,
+                                        "p_init": 1,
+                                        "solving_time": time.time() - tic,
+                                        "optimized_params": optim_param_list,
+                                        "tracked_torque": tau,
+                                        "muscle_track_idx": muscle_track_idx,
+                                        "param_bounds": param_bounds,
+                                        "solver_out": solver_out,
+                                        "n_frame_cycle": n_frame_cycle,
+                                        "list_cycle": random_list_tmp,
+                                    },
+                                    optim_param_file,
+                                    safe=False,
+                                    add_data=True,
+                                )
+
+                            # _update_params(biorbd_model_path,
                             #               f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_{trial_short}_{file_suffix}_{cycle}_test.bio",
                             #               with_casadi=False,
                             #               ratio=True,

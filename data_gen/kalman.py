@@ -2,6 +2,7 @@
 Script to scale the opensim model then translate it into biomod file and initialize it with a Kalman filter.
 Data can be live-streamed or prerecorded to avoid the subject waiting.
 """
+
 import os
 
 try:
@@ -14,11 +15,13 @@ from biosiglive import load, save
 import matplotlib.pyplot as plt
 from pathlib import Path
 
+
 def compute_qdot(q):
     dt = 0.01
-    qdot = (q[:, 1:] - q[:, :q.shape[1] - 1]) / dt
-    qdot = np.concatenate((qdot, qdot[:, qdot.shape[1] - 1:qdot.shape[1]]), axis=1)
+    qdot = (q[:, 1:] - q[:, : q.shape[1] - 1]) / dt
+    qdot = np.concatenate((qdot, qdot[:, qdot.shape[1] - 1 : qdot.shape[1]]), axis=1)
     return qdot
+
 
 def kalman_func(markers, model):
     markersOverFrames = []
@@ -38,11 +41,8 @@ def kalman_func(markers, model):
         q_dot[:, i] = Qdot.to_array()
     return q_recons, q_dot
 
-def initialize(
-    biomod_model,
-        file_path,
-        markers,
-        save_data=False):
+
+def initialize(biomod_model, file_path, markers, save_data=False):
     """
     Initialize the model with a Kalman filter and/or scale it.
     Parameters

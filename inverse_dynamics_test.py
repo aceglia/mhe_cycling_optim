@@ -5,7 +5,7 @@ import biorbd
 import bioviz
 import matplotlib.pyplot as plt
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     part = "P10"
     file_name = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}"
     all_dir = os.listdir(file_name)
@@ -15,7 +15,9 @@ if __name__ == '__main__':
     # trials = [f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/{trial}/reoriented_dlc_markers.bio"]
     prefix = "/mnt/shared"
     trials = [
-        prefix + f"/Projet_hand_bike_markerless/process_data/{part}/result_biomech_{trial.split('_')[0]}_{trial.split('_')[1]}_{model}_no_root_offline.bio"]
+        prefix
+        + f"/Projet_hand_bike_markerless/process_data/{part}/result_biomech_{trial.split('_')[0]}_{trial.split('_')[1]}_{model}_no_root_offline.bio"
+    ]
     source = "dlc_1"
     biorbd_model_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/gear_20_model_scaled_{source[:-2]}_ribs_new_seth_param.bioMod"
 
@@ -24,8 +26,8 @@ if __name__ == '__main__':
 
     for trial in trials:
         kalman_data = load(trial)
-        n_start = 300  #int(7) + 8
-        n_stop = 600  #int(390) - 157
+        n_start = 300  # int(7) + 8
+        n_stop = 600  # int(390) - 157
         f_ext = kalman_data["f_ext"][:, n_start:n_stop]
         q_init = kalman_data[source]["q_raw"][:, n_start:n_stop]
         q_dot_init = kalman_data[source]["q_dot"][:, n_start:n_stop]
@@ -52,11 +54,11 @@ if __name__ == '__main__':
         results["dq_est"] = data["qdot"][:, :]
         results["tau_est"] = data["tau"][:, :]
         msk_fun = MskFunctions(biorbd_model_path, markers_init.shape[2], 120)
-        q_new, q_dot_new, _ = msk_fun.compute_inverse_kinematics(markers_init, method=InverseKinematicsMethods.BiorbdLeastSquare, qdot_from_finite_difference=True)
-        q_filtered = OfflineProcessing().butter_lowpass_filter(q_new,
-                6, 120, 2)
-        q_filtered = OfflineProcessing().butter_lowpass_filter( q_init,
-                6, 120, 2)
+        q_new, q_dot_new, _ = msk_fun.compute_inverse_kinematics(
+            markers_init, method=InverseKinematicsMethods.BiorbdLeastSquare, qdot_from_finite_difference=True
+        )
+        q_filtered = OfflineProcessing().butter_lowpass_filter(q_new, 6, 120, 2)
+        q_filtered = OfflineProcessing().butter_lowpass_filter(q_init, 6, 120, 2)
         qdot_new = np.zeros_like(q_init)
         for i in range(1, q_filtered.shape[1] - 2):
             qdot_new[:, i] = (q_filtered[:, i + 1] - q_filtered[:, i - 1]) / (1 / 120)
@@ -72,7 +74,6 @@ if __name__ == '__main__':
         tau = np.zeros_like(q_init)
         tau_bis = np.zeros_like(q_init)
         tau_new = np.zeros_like(q_init)
-
 
         for i in range(q_init.shape[1]):
             B = [0, 0, 0, 1]
@@ -100,9 +101,6 @@ if __name__ == '__main__':
             tau_bis[:, i] = model.InverseDynamics(q, dq, qddot[:, i]).to_array()
             tau_new[:, i] = model.InverseDynamics(q_filtered[:, i], qdot_new[:, i], qddot_new[:, i], ext).to_array()
 
-
-
-
         for i in range(markers_init.shape[1]):
             plt.subplot(4, 5, i + 1)
             for j in range(3):
@@ -112,34 +110,29 @@ if __name__ == '__main__':
         plt.figure("q")
         for i in range(q_init.shape[0]):
             plt.subplot(4, 4, i + 1)
-            #plt.plot(q_init[i, :] * 57.3)
-            plt.plot(q_filtered[i, :]* 57.3)
-            plt.plot(q_new[i, :]* 57.3)
-
+            # plt.plot(q_init[i, :] * 57.3)
+            plt.plot(q_filtered[i, :] * 57.3)
+            plt.plot(q_new[i, :] * 57.3)
 
         plt.figure("qdot")
         for i in range(q_dot_init.shape[0]):
             plt.subplot(4, 4, i + 1)
-            #plt.plot(q_dot_init[i, :] * factor)
+            # plt.plot(q_dot_init[i, :] * factor)
             plt.plot(q_dot_new[i, :] * factor)
-
-
 
         plt.figure("qddot")
         for i in range(q_dot_init.shape[0]):
             plt.subplot(4, 4, i + 1)
-            #plt.plot(q_ddot_init[i, :] * factor)
+            # plt.plot(q_ddot_init[i, :] * factor)
             plt.plot(qddot[i, :] * factor)
             plt.plot(qddot_new[i, :] * factor)
-
 
         plt.figure("tau")
         for i in range(tau_init.shape[0]):
             plt.subplot(4, 4, i + 1)
-            #plt.plot(tau_init[i, :], "r")
-            #plt.plot(tau[i, :])
+            # plt.plot(tau_init[i, :], "r")
+            # plt.plot(tau[i, :])
             plt.plot(tau_bis[i, :])
             plt.plot(tau_new[i, :])
-
 
         plt.show()

@@ -7,6 +7,8 @@ from mhe.utils import apply_params
 from scipy.signal import find_peaks
 import os
 from scipy.interpolate import interp1d
+
+
 def _interpolate_data(markers_depth, shape):
     new_markers_depth_int = np.zeros((3, markers_depth.shape[1], shape))
     for i in range(markers_depth.shape[0]):
@@ -25,6 +27,7 @@ def _interpolate_data_2d(data, shape):
     new_data = f_mark(x_new)
     return new_data
 
+
 def plot_results(x_ref, states_tmp, controls_tmp, muscles_target, f_ext_target, muscle_track_idx, nbQ):
     states = {}
     controls = {}
@@ -38,9 +41,9 @@ def plot_results(x_ref, states_tmp, controls_tmp, muscles_target, f_ext_target, 
         for i in range(states[key].shape[0]):
             plt.subplot(4, int(states[key].shape[0] // 4) + 1, i + 1)
             if key == "q":
-                plt.plot(x_ref[i, :states[key].shape[1]], "r")
+                plt.plot(x_ref[i, : states[key].shape[1]], "r")
             if key == "qdot":
-                plt.plot(x_ref[i+nbQ, :states[key].shape[1]], "r")
+                plt.plot(x_ref[i + nbQ, : states[key].shape[1]], "r")
             plt.plot(states[key][i, :])
 
     muscle_idx = muscle_track_idx
@@ -50,14 +53,14 @@ def plot_results(x_ref, states_tmp, controls_tmp, muscles_target, f_ext_target, 
             plt.subplot(4, int(controls[key].shape[0] // 4) + 1, i + 1)
             if key == "muscles":
                 if i in muscle_idx:
-                    plt.plot(muscles_target[muscle_idx.index(i), :controls[key].shape[1]], "r")
+                    plt.plot(muscles_target[muscle_idx.index(i), : controls[key].shape[1]], "r")
             if key == "f_ext":
-                plt.plot(f_ext_target[i, :controls[key].shape[1]], "r")
+                plt.plot(f_ext_target[i, : controls[key].shape[1]], "r")
             plt.plot(controls[key][i, :])
         plt.show()
 
 
-def get_muscular_torque(x, act, model, parameters_file_path=None, with_casadi=False, ratio = True):
+def get_muscular_torque(x, act, model, parameters_file_path=None, with_casadi=False, ratio=True):
     """
     Get the muscular torque.
     """
@@ -110,6 +113,7 @@ def get_id_torque(q, q_dot, model=None, f_ext=None, rate=60):
         tau_from_b[:, i] = model.InverseDynamics(q[:, i], qdot[:, i], qddot[:, i], ext_load).to_array()
     return tau_from_b
 
+
 def get_tracking_idx(model, emg_names):
     muscle_list = []
     for i in range(model.nbMuscles()):
@@ -120,6 +124,7 @@ def get_tracking_idx(model, emg_names):
             if emg_names[i] in muscle_list[j]:
                 muscle_track_idx.append(j)
     return muscle_track_idx
+
 
 def plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style="-", color="b", model_path=None):
     data = load(data_path, merge=False)
@@ -141,35 +146,87 @@ def plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style
                     data_to_plot[key] = None
                     continue
 
-                data_to_plot[key] = data[i][key][..., n_frame_to_plot:n_frame_to_plot+1] if i == 0 else np.append(data_to_plot[key], data[i][key][..., n_frame_to_plot:n_frame_to_plot+1] ,axis=-1)
+                data_to_plot[key] = (
+                    data[i][key][..., n_frame_to_plot : n_frame_to_plot + 1]
+                    if i == 0
+                    else np.append(data_to_plot[key], data[i][key][..., n_frame_to_plot : n_frame_to_plot + 1], axis=-1)
+                )
             if i == 0:
-                initial_guess[0]["q_init"] = np.array(data[i]["x_init"]["q"])[..., n_frame_to_plot:n_frame_to_plot+1]
-                initial_guess[1]["dq_init"] = np.array(data[i]["x_init"]["qdot"])[..., n_frame_to_plot:n_frame_to_plot+1]
-                initial_guess[2]["u_init"] = np.array(data[i]["u_init"]["muscles"])[..., n_frame_to_plot:n_frame_to_plot+1]
-                initial_guess[4]["tau_init"] = np.array(data[i]["u_init"]["tau"])[..., n_frame_to_plot:n_frame_to_plot+1]
-                initial_guess[5]["f_ext_init"] = None if "f_ext" not in data[i]["u_init"].keys() else np.array(data[i]["u_init"]["f_ext"])[..., n_frame_to_plot:n_frame_to_plot+1]
-                target[0]["q_ref"] = data[i]["x_ref"][:n_q, n_frame_to_plot:n_frame_to_plot+1]
-                target[1]["dq_ref"] = data[i]["x_ref"][n_q:, n_frame_to_plot:n_frame_to_plot+1]
-                target[2]["muscles_target"] = data[i]["muscles_target"][:, n_frame_to_plot:n_frame_to_plot+1]
+                initial_guess[0]["q_init"] = np.array(data[i]["x_init"]["q"])[
+                    ..., n_frame_to_plot : n_frame_to_plot + 1
+                ]
+                initial_guess[1]["dq_init"] = np.array(data[i]["x_init"]["qdot"])[
+                    ..., n_frame_to_plot : n_frame_to_plot + 1
+                ]
+                initial_guess[2]["u_init"] = np.array(data[i]["u_init"]["muscles"])[
+                    ..., n_frame_to_plot : n_frame_to_plot + 1
+                ]
+                initial_guess[4]["tau_init"] = np.array(data[i]["u_init"]["tau"])[
+                    ..., n_frame_to_plot : n_frame_to_plot + 1
+                ]
+                initial_guess[5]["f_ext_init"] = (
+                    None
+                    if "f_ext" not in data[i]["u_init"].keys()
+                    else np.array(data[i]["u_init"]["f_ext"])[..., n_frame_to_plot : n_frame_to_plot + 1]
+                )
+                target[0]["q_ref"] = data[i]["x_ref"][:n_q, n_frame_to_plot : n_frame_to_plot + 1]
+                target[1]["dq_ref"] = data[i]["x_ref"][n_q:, n_frame_to_plot : n_frame_to_plot + 1]
+                target[2]["muscles_target"] = data[i]["muscles_target"][:, n_frame_to_plot : n_frame_to_plot + 1]
                 target[4]["tau_est"] = None
-                target[5]["f_ext_ref"] = data[i]["f_ext_ref"][:, n_frame_to_plot:n_frame_to_plot+1]
+                target[5]["f_ext_ref"] = data[i]["f_ext_ref"][:, n_frame_to_plot : n_frame_to_plot + 1]
             else:
-                initial_guess[0]["q_init"] = np.append(initial_guess[0]["q_init"], np.array(data[i]["x_init"]["q"])[:, n_frame_to_plot:n_frame_to_plot+1], axis=-1)
-                initial_guess[1]["dq_init"] = np.append(initial_guess[1]["dq_init"], np.array(data[i]["x_init"]["qdot"])[:, n_frame_to_plot:n_frame_to_plot+1], axis=-1)
-                initial_guess[2]["u_init"] = np.append(initial_guess[2]["u_init"], np.array(data[i]["u_init"]["muscles"])[:, n_frame_to_plot:n_frame_to_plot+1], axis=-1)
-                initial_guess[4]["tau_init"] = np.append(initial_guess[4]["tau_init"], np.array(data[i]["u_init"]["tau"])[:, n_frame_to_plot:n_frame_to_plot+1], axis=-1)
-                initial_guess[5]["f_ext_init"] = None if "f_ext" not in data[i]["u_init"].keys() else np.append(initial_guess[5]["f_ext_init"], np.array(data[i]["u_init"]["f_ext"])[:, n_frame_to_plot:n_frame_to_plot+1], axis=-1)
-                target[0]["q_ref"] = np.append(target[0]["q_ref"], data[i]["x_ref"][:n_q, n_frame_to_plot:n_frame_to_plot+1], axis=-1)
-                target[1]["dq_ref"] = np.append(target[1]["dq_ref"], data[i]["x_ref"][n_q:, n_frame_to_plot:n_frame_to_plot+1], axis=-1)
-                target[2]["muscles_target"] = np.append(target[2]["muscles_target"], data[i]["muscles_target"][:, n_frame_to_plot:n_frame_to_plot+1], axis=-1)
-                target[5]["f_ext_ref"] = np.append(target[5]["f_ext_ref"], data[i]["f_ext_ref"][:, n_frame_to_plot:n_frame_to_plot+1], axis=-1)
+                initial_guess[0]["q_init"] = np.append(
+                    initial_guess[0]["q_init"],
+                    np.array(data[i]["x_init"]["q"])[:, n_frame_to_plot : n_frame_to_plot + 1],
+                    axis=-1,
+                )
+                initial_guess[1]["dq_init"] = np.append(
+                    initial_guess[1]["dq_init"],
+                    np.array(data[i]["x_init"]["qdot"])[:, n_frame_to_plot : n_frame_to_plot + 1],
+                    axis=-1,
+                )
+                initial_guess[2]["u_init"] = np.append(
+                    initial_guess[2]["u_init"],
+                    np.array(data[i]["u_init"]["muscles"])[:, n_frame_to_plot : n_frame_to_plot + 1],
+                    axis=-1,
+                )
+                initial_guess[4]["tau_init"] = np.append(
+                    initial_guess[4]["tau_init"],
+                    np.array(data[i]["u_init"]["tau"])[:, n_frame_to_plot : n_frame_to_plot + 1],
+                    axis=-1,
+                )
+                initial_guess[5]["f_ext_init"] = (
+                    None
+                    if "f_ext" not in data[i]["u_init"].keys()
+                    else np.append(
+                        initial_guess[5]["f_ext_init"],
+                        np.array(data[i]["u_init"]["f_ext"])[:, n_frame_to_plot : n_frame_to_plot + 1],
+                        axis=-1,
+                    )
+                )
+                target[0]["q_ref"] = np.append(
+                    target[0]["q_ref"], data[i]["x_ref"][:n_q, n_frame_to_plot : n_frame_to_plot + 1], axis=-1
+                )
+                target[1]["dq_ref"] = np.append(
+                    target[1]["dq_ref"], data[i]["x_ref"][n_q:, n_frame_to_plot : n_frame_to_plot + 1], axis=-1
+                )
+                target[2]["muscles_target"] = np.append(
+                    target[2]["muscles_target"],
+                    data[i]["muscles_target"][:, n_frame_to_plot : n_frame_to_plot + 1],
+                    axis=-1,
+                )
+                target[5]["f_ext_ref"] = np.append(
+                    target[5]["f_ext_ref"], data[i]["f_ext_ref"][:, n_frame_to_plot : n_frame_to_plot + 1], axis=-1
+                )
         else:
             initial_guess.append({})
             initial_guess[-1]["q_init"] = np.array(data[i]["x_init"]["q"])
             initial_guess[-1]["dq_init"] = np.array(data[i]["x_init"]["qdot"])
             initial_guess[-1]["u_init"] = np.array(data[i]["u_init"]["muscles"])
             initial_guess[-1]["tau_init"] = np.array(data[i]["u_init"]["tau"])
-            initial_guess[-1]["f_ext_init"] = None if "f_ext" not in data[i]["u_init"].keys() else np.array(data[i]["u_init"]["f_ext"])
+            initial_guess[-1]["f_ext_init"] = (
+                None if "f_ext" not in data[i]["u_init"].keys() else np.array(data[i]["u_init"]["f_ext"])
+            )
             target.append({})
             target[-1]["q_ref"] = data[i]["x_ref"][:n_q, :]
             target[-1]["dq_ref"] = data[i]["x_ref"][n_q:, :]
@@ -180,18 +237,18 @@ def plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style
     n_iter = len(data) if n_windows is None else n_windows
     for i in range(len(data)):
         key = "kin_target"
-        kin_target = data[i][key][..., n_frame_to_plot:n_frame_to_plot + 1] if i == 0 else np.append(
-            kin_target, data[i][key][..., n_frame_to_plot:n_frame_to_plot + 1], axis=-1)
+        kin_target = (
+            data[i][key][..., n_frame_to_plot : n_frame_to_plot + 1]
+            if i == 0
+            else np.append(kin_target, data[i][key][..., n_frame_to_plot : n_frame_to_plot + 1], axis=-1)
+        )
 
     msk = MskFunctions(model_path, data_buffer_size=kin_target.shape[2], system_rate=120)
     model = msk.model
     markers = np.ndarray((3, model.nbMarkers(), data_to_plot[0]["q_est"].shape[1]))
     for i in range(data_to_plot[0]["q_est"].shape[1]):
-        markers[:, :, i] = np.array(
-            [mark.to_array() for mark in model.markers(data_to_plot[0]["q_est"][:, i])]
-        ).T
-    q, qdot, qddot = msk.compute_inverse_kinematics(kin_target, InverseKinematicsMethods.BiorbdKalman,
-                                                    kalman_freq=120)
+        markers[:, :, i] = np.array([mark.to_array() for mark in model.markers(data_to_plot[0]["q_est"][:, i])]).T
+    q, qdot, qddot = msk.compute_inverse_kinematics(kin_target, InverseKinematicsMethods.BiorbdKalman, kalman_freq=120)
     # q = data_to_plot[0]["q_est"]
     # qdot = data_to_plot[0]["dq_est"]
     # qddot = np.zeros_like(q)
@@ -205,27 +262,29 @@ def plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style
     # b.exec()
     q_est = np.array([k["q_est"][:, 0] for k in data]).T
     tau = get_id_torque(np.concatenate((q_est, qdot, qddot), axis=0), msk.model, data_to_plot[0]["f_ext"])
-    mus_tau = get_muscular_torque(np.concatenate((data_to_plot[0]["q_est"], data_to_plot[0]["dq_est"]), axis=0),
-                                  data_to_plot[0]["u_est"], msk.model)
+    mus_tau = get_muscular_torque(
+        np.concatenate((data_to_plot[0]["q_est"], data_to_plot[0]["dq_est"]), axis=0),
+        data_to_plot[0]["u_est"],
+        msk.model,
+    )
     plt.figure("markers")
     for m in range(markers.shape[1]):
-        plt.subplot(4, markers.shape[1] // 4 + 1, m+1)
+        plt.subplot(4, markers.shape[1] // 4 + 1, m + 1)
         for i in range(3):
             plt.plot(kin_target[i, m, :], "r", label="ref", alpha=0.5)
             plt.plot(markers[i, m, :], line_style, c=color, label="optim")
     plt.figure("tau_tot")
 
-
     for m in range(tau.shape[0]):
-        plt.subplot(4, tau.shape[0] // 4 + 1, m+1)
+        plt.subplot(4, tau.shape[0] // 4 + 1, m + 1)
         plt.plot(tau[m, :], "r", label="id")
-        plt.plot(mus_tau[m, :] + data_to_plot[0]["tau_est"][m, :],line_style, c=color, label="optim")
+        plt.plot(mus_tau[m, :] + data_to_plot[0]["tau_est"][m, :], line_style, c=color, label="optim")
     #
-    tau_tot = np.array([max(tau) for tau in np.abs(mus_tau+ data_to_plot[0]["tau_est"])])
+    tau_tot = np.array([max(tau) for tau in np.abs(mus_tau + data_to_plot[0]["tau_est"])])
     tau_est = data_to_plot[0]["tau_est"] / np.repeat(tau_tot[:, None], data_to_plot[0]["tau_est"].shape[1], axis=1)
     plt.figure("norm_tau")
     for m in range(tau.shape[0]):
-        plt.subplot(4, tau.shape[0] // 4 + 1, m+1)
+        plt.subplot(4, tau.shape[0] // 4 + 1, m + 1)
         plt.plot(tau_est[m, :], line_style, c=color)
 
     # import bioviz
@@ -234,15 +293,17 @@ def plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style
     # b.load_experimental_markers(markers)
     # b.exec()
 
-    emg_names = ["PectoralisMajorThorax",
-                 "BIC",
-                 "TRI",
-                 "LatissimusDorsi",
-                 'TrapeziusScapula_S',
-                 #'TrapeziusClavicle',
-                 "DeltoideusClavicle_A",
-                 'DeltoideusScapula_M',
-                  'DeltoideusScapula_P']
+    emg_names = [
+        "PectoralisMajorThorax",
+        "BIC",
+        "TRI",
+        "LatissimusDorsi",
+        "TrapeziusScapula_S",
+        #'TrapeziusClavicle',
+        "DeltoideusClavicle_A",
+        "DeltoideusScapula_M",
+        "DeltoideusScapula_P",
+    ]
     track_idx = get_tracking_idx(model, emg_names)
 
     n_iter = 1 if not plot_by_windows else n_iter
@@ -254,7 +315,11 @@ def plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style
         plt.figure(f"{key}")
         for n in range(n_iter):
             data_tmp = data[n][key] if plot_by_windows else data_to_plot[n][key]
-            x_tmp = np.arange(n * slide_size, n * slide_size + data_tmp.shape[-1], 1) if plot_by_windows else np.arange(data_tmp.shape[-1])
+            x_tmp = (
+                np.arange(n * slide_size, n * slide_size + data_tmp.shape[-1], 1)
+                if plot_by_windows
+                else np.arange(data_tmp.shape[-1])
+            )
             # make a x axis fill of int from 0 to n_iter * slide_size
             for j in range(data_tmp.shape[0]):
                 plt.subplot(4, int(data_tmp.shape[0] // 4) + 1, j + 1)
@@ -262,7 +327,9 @@ def plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style
                 if ref_key_to_plot[k] is not None:
                     if plot_by_windows:
                         if target[n][ref_key_to_plot[k]].shape[-1] != data_tmp.shape[-1]:
-                            target[n][ref_key_to_plot[k]] = np.repeat(target[n][ref_key_to_plot[k]], data_tmp.shape[-1], axis=-1)
+                            target[n][ref_key_to_plot[k]] = np.repeat(
+                                target[n][ref_key_to_plot[k]], data_tmp.shape[-1], axis=-1
+                            )
                         plt.plot(x_tmp, target[n][ref_key_to_plot[k]][j, :], "r")
                     else:
                         if ref_key_to_plot[k] == "muscles_target":
@@ -272,7 +339,7 @@ def plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style
                             plt.plot(x_tmp, target[k][ref_key_to_plot[k]][j, :], "r")
                 if key in ["u_est", "muscle_force"]:
                     plt.title(model.muscleNames()[j].to_string())
-                if key in ["q_est", "dq_est","tau_est"]:
+                if key in ["q_est", "dq_est", "tau_est"]:
                     plt.title(model.nameDof()[j].to_string())
                 # if initial_guess_key[k] is not None:
                 #     if plot_by_windows:
@@ -283,8 +350,9 @@ def plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style
                 #             init_guess = initial_guess[n][initial_guess_key[k]]
                 #     else:
                 #         init_guess = initial_guess[k][initial_guess_key[k]]
-                    #plt.plot(x_tmp, init_guess[j, :], "g")
+                # plt.plot(x_tmp, init_guess[j, :], "g")
     # plt.show()
+
 
 def process_cycles(all_results, peaks, n_peaks=None, key_for_size="q_est"):
     dic_tmp = {}
@@ -301,15 +369,26 @@ def process_cycles(all_results, peaks, n_peaks=None, key_for_size="q_est"):
                 break
             interp_function = _interpolate_data_2d if len(all_results[key2].shape) == 2 else _interpolate_data
             if array_tmp is None:
-                array_tmp = interp_function(all_results[key2][..., peaks[k]:peaks[k + 1]], 100)
+                array_tmp = interp_function(all_results[key2][..., peaks[k] : peaks[k + 1]], 100)
                 array_tmp = array_tmp[None, ...]
             else:
-                data_interp = interp_function(all_results[key2][..., peaks[k]:peaks[k + 1]], 100)
+                data_interp = interp_function(all_results[key2][..., peaks[k] : peaks[k + 1]], 100)
                 array_tmp = np.concatenate((array_tmp, data_interp[None, ...]), axis=0)
         all_results["cycles"][key2] = array_tmp
     return all_results
 
-def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_style=None, optim_param_path=None, mhe_file=None, compare_to_fd=False):
+
+def plot_cycles(
+    model,
+    data_path,
+    idx_to_export=0,
+    cycles=True,
+    color=None,
+    line_style=None,
+    optim_param_path=None,
+    mhe_file=None,
+    compare_to_fd=False,
+):
     data = load(data_path, merge=False)
     data_mhe = None
     if compare_to_fd:
@@ -332,8 +411,12 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
     q_est = dic_merged["q_est"]
     dq_est = dic_merged["dq_est"]
     u_est = dic_merged["u_est"]
-    dic_merged["mus_tau"] = get_muscular_torque(np.concatenate((q_est, dq_est), axis=0),
-                                  u_est, bio_model, parameters_file_path=optim_param_path) + dic_merged["tau_est"]
+    dic_merged["mus_tau"] = (
+        get_muscular_torque(
+            np.concatenate((q_est, dq_est), axis=0), u_est, bio_model, parameters_file_path=optim_param_path
+        )
+        + dic_merged["tau_est"]
+    )
     # dic_merged["tau"] = get_id_torque(q_est, dq_est, bio_model, dic_merged["f_ext"], rate=60)
 
     #
@@ -360,19 +443,22 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
         dic_merged["q_dot_ref"] = data_mhe["qdot"]
         dic_merged["cycles"]["q_ref"] = data_mhe["cycles"]["q"]
         dic_merged["q_ref"] = data_mhe["q"]
-    emg_names = ["PectoralisMajorThorax",
-                 "BIC",
-                 "TRI",
-                 "LatissimusDorsi",
-                 'TrapeziusScapula_S',
-                 #'TrapeziusClavicle',
-                 "DeltoideusClavicle_A",
-                 'DeltoideusScapula_M',
-                  'DeltoideusScapula_P']
+    emg_names = [
+        "PectoralisMajorThorax",
+        "BIC",
+        "TRI",
+        "LatissimusDorsi",
+        "TrapeziusScapula_S",
+        #'TrapeziusClavicle',
+        "DeltoideusClavicle_A",
+        "DeltoideusScapula_M",
+        "DeltoideusScapula_P",
+    ]
     if "P11" in parameters_file_path:
         emg_names.pop(emg_names.index("LatissimusDorsi"))
     # key_to_export.append("tau")
     from math import ceil
+
     track_idx = get_tracking_idx(bio_model, emg_names)
     for key in key_to_export:
         n_key = dic_merged[key].shape[0] if key != "tau" else dic_merged[key].shape[0] - 1
@@ -381,7 +467,7 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
         count = 0
         line_style = "-"
         for i in range(n_key):
-            plt.subplot(ceil(n_key / 3), 3, i +1)
+            plt.subplot(ceil(n_key / 3), 3, i + 1)
             # if key in ["u_est", "mus_tau"]:
             #     key_tmp = ["tau", key] if key != "u_est" else ["muscles_target", key]
             #     color_tmp = [color] if len(key_tmp) == 1 else ["r", color]
@@ -390,7 +476,7 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
             #     key_tmp = ["tau", "tau_est", "mus_tau"]
             #     color_tmp = [color] if len(key_tmp) == 1 else ["r", color, color]
             #     line_style = ["-", "--", "-"]
-            if (key == "q_est" or key=="dq_est") and compare_to_fd:
+            if (key == "q_est" or key == "dq_est") and compare_to_fd:
                 first_key = "q_ref" if key == "q_est" else "q_dot_ref"
                 key_tmp = [first_key, key]
                 color_tmp = [color] if len(key_tmp) == 1 else ["r", color]
@@ -401,39 +487,60 @@ def plot_cycles(model, data_path, idx_to_export=0, cycles=True,color=None, line_
                 line_style = ["-"]
             for idx_j, j in enumerate(key_tmp):
                 if j == "muscles_target" and i in track_idx:
-                    plt.fill_between(t,
-                                     np.mean(dic_merged["cycles"][j], axis=0)[track_idx.index(i), :] - np.std(dic_merged["cycles"][j],
-                                                                                             axis=0)[track_idx.index(i), :],
-                                     np.mean(dic_merged["cycles"][j], axis=0)[track_idx.index(i), :] + np.std(dic_merged["cycles"][j],
-                                                                                             axis=0)[track_idx.index(i), :], alpha=0.3,
-                                     color=color_tmp[idx_j])
-                    plt.plot(t, np.mean(dic_merged["cycles"][j], axis=0)[track_idx.index(i), :], color=color_tmp[idx_j], alpha=0.8)
+                    plt.fill_between(
+                        t,
+                        np.mean(dic_merged["cycles"][j], axis=0)[track_idx.index(i), :]
+                        - np.std(dic_merged["cycles"][j], axis=0)[track_idx.index(i), :],
+                        np.mean(dic_merged["cycles"][j], axis=0)[track_idx.index(i), :]
+                        + np.std(dic_merged["cycles"][j], axis=0)[track_idx.index(i), :],
+                        alpha=0.3,
+                        color=color_tmp[idx_j],
+                    )
+                    plt.plot(
+                        t,
+                        np.mean(dic_merged["cycles"][j], axis=0)[track_idx.index(i), :],
+                        color=color_tmp[idx_j],
+                        alpha=0.8,
+                    )
                 elif j != "muscles_target":
-                    plt.fill_between(t,
-                            np.mean(dic_merged["cycles"][j], axis=0)[i, :] - np.std(dic_merged["cycles"][j], axis=0)[i, :],
-                            np.mean(dic_merged["cycles"][j], axis=0)[i, :] + np.std(dic_merged["cycles"][j], axis=0)[i, :], alpha=0.3, color=color_tmp[idx_j])
-                    plt.plot(t, np.mean(dic_merged["cycles"][j], axis=0)[i, :], color=color_tmp[idx_j], ls=line_style[idx_j], alpha=0.8)
+                    plt.fill_between(
+                        t,
+                        np.mean(dic_merged["cycles"][j], axis=0)[i, :] - np.std(dic_merged["cycles"][j], axis=0)[i, :],
+                        np.mean(dic_merged["cycles"][j], axis=0)[i, :] + np.std(dic_merged["cycles"][j], axis=0)[i, :],
+                        alpha=0.3,
+                        color=color_tmp[idx_j],
+                    )
+                    plt.plot(
+                        t,
+                        np.mean(dic_merged["cycles"][j], axis=0)[i, :],
+                        color=color_tmp[idx_j],
+                        ls=line_style[idx_j],
+                        alpha=0.8,
+                    )
 
                     plt.margins(x=0)
                 if key == "muscle_force":
                     plt.title(bio_model.muscleNames()[i].to_string())
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     part = "P10"
-    participants = ["P10"] #, "P11", "P13", "P14"]
+    participants = ["P10"]  # , "P11", "P13", "P14"]
     trials = ["gear_20"]
     cycle = 5
     result_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/results"
     for trial in trials:
         suffix = "test_quad"
-        parameters_file_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{cycle}_{suffix}.bio"
+        parameters_file_path = (
+            f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{cycle}_{suffix}.bio"
+        )
         # model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial}_model_scaled_dlc_ribs_new_seth_param_params_id_{cycle}.bioMod"
         # data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_True_id_{cycle}_full.bio"
         # plot_all_window(data_path, n_windows=None, plot_by_windows=False, model_path=model)
         model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/output_models/{trial}_model_scaled_dlc_technical_marker_params.bioMod"
 
-            #plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style="--", color = "g", model_path=model)
-        #model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial}_model_scaled_dlc_ribs_new_seth_param_params_fd_{cycle}.bioMod"
+        # plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style="--", color = "g", model_path=model)
+        # model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial}_model_scaled_dlc_ribs_new_seth_param_params_fd_{cycle}.bioMod"
         file_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}"
         all_dir = os.listdir(file_dir)
         trial_dir = [dir for dir in all_dir if trial in dir and "result" not in dir][0]
@@ -441,12 +548,14 @@ if __name__ == '__main__':
         # plt.show()
         mhe_file = None
         # if part != "P16":
-            # data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_True_fd_{cycle}_half_{suffix}.bio"
-            # plot_cycles(model, data_path, optim_param_path=parameters_file_path, color = "g", mhe_file=mhe_file, compare_to_fd=True)
+        # data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_True_fd_{cycle}_half_{suffix}.bio"
+        # plot_cycles(model, data_path, optim_param_path=parameters_file_path, color = "g", mhe_file=mhe_file, compare_to_fd=True)
 
-            #plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style="--", color = "k", model_path=model)
+        # plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style="--", color = "k", model_path=model)
         # plt.show()
         if part != "P16":
             data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_False_track_q.bio"
-            plot_cycles(model, data_path, optim_param_path=None, color="b", mhe_file=mhe_file, compare_to_fd=False, cycles=False)
+            plot_cycles(
+                model, data_path, optim_param_path=None, color="b", mhe_file=mhe_file, compare_to_fd=False, cycles=False
+            )
     plt.show()

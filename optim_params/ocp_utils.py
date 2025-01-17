@@ -23,18 +23,19 @@ from optim_params.file_io_utils import save_iteration
 
 
 def custom_torque_driven(
-        time: MX,
-        states: MX,
-        controls: MX,
-        parameters: MX,
-        stochastic_variables: MX,
-        nlp: NonLinearProgram,
+    time: MX,
+    states: MX,
+    controls: MX,
+    parameters: MX,
+    stochastic_variables: MX,
+    nlp: NonLinearProgram,
 ):
     q = DynamicsFunctions.get(nlp.states["q"], states)
     qdot = DynamicsFunctions.get(nlp.states["qdot"], states)
     tau = DynamicsFunctions.get(nlp.controls["tau"], controls)
     dq = DynamicsFunctions.compute_qdot(nlp, q, qdot)
     from casadi import cross
+
     f_ext = DynamicsFunctions.get(nlp.controls["f_ext"], controls)
     B = [0, 0, 0, 1]
     all_jcs = nlp.model.model.allGlobalJCS(q)
@@ -66,8 +67,9 @@ def custom_configure(ocp: OptimalControlProgram, nlp: NonLinearProgram):  # , wi
     ConfigureProblem.configure_q(ocp, nlp, as_states=True, as_controls=False)
     ConfigureProblem.configure_qdot(ocp, nlp, as_states=True, as_controls=False)
     ConfigureProblem.configure_tau(ocp, nlp, as_states=False, as_controls=True)
-    ConfigureProblem.configure_new_variable("f_ext", ["mx", "my", "mz", "fx", "fy", "fz"],
-                                            ocp, nlp, as_states=False, as_controls=True)
+    ConfigureProblem.configure_new_variable(
+        "f_ext", ["mx", "my", "mz", "fx", "fy", "fz"], ocp, nlp, as_states=False, as_controls=True
+    )
     ConfigureProblem.configure_dynamics_function(ocp, nlp, custom_torque_driven)
 
 
@@ -76,69 +78,132 @@ def get_objectives(weigths, nb_q, nb_markers, n_shooting, with_f_ext=False, trac
     # target = np.zeros((3, nb_markers, n_shooting + 1))
     q_init = np.zeros((nb_q * 2, n_shooting + 1))
     objective_functions = ObjectiveList()
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot", weight=weigths["qdot"],
-                            multi_thread=False,
-                            index=list(range(abs(10 - nb_q), nb_q)), derivative=False)
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+        key="qdot",
+        weight=weigths["qdot"],
+        multi_thread=False,
+        index=list(range(abs(10 - nb_q), nb_q)),
+        derivative=False,
+    )
 
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=weigths["tau"],
-                            multi_thread=False,
-                            index=list(range(abs(10 - nb_q), nb_q)))
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_CONTROL,
+        key="tau",
+        weight=weigths["tau"],
+        multi_thread=False,
+        index=list(range(abs(10 - nb_q), nb_q)),
+    )
     if with_f_ext:
-        objective_functions.add(ObjectiveFcn.Lagrange.TRACK_CONTROL, key="f_ext", weight=weigths["f_ext"],
-                                target=f_ext[:, :n_shooting], node=Node.ALL_SHOOTING, multi_thread=False)
-    objective_functions.add(ObjectiveFcn.Lagrange.TRACK_MARKERS, weight=weigths["markers"],
-                            target=target[..., :n_shooting + 1],
-                            node=Node.ALL, multi_thread=False)
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=weigths["q"], multi_thread=False,
-                            index=list(range(abs(10 - nb_q), nb_q)))
+        objective_functions.add(
+            ObjectiveFcn.Lagrange.TRACK_CONTROL,
+            key="f_ext",
+            weight=weigths["f_ext"],
+            target=f_ext[:, :n_shooting],
+            node=Node.ALL_SHOOTING,
+            multi_thread=False,
+        )
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.TRACK_MARKERS,
+        weight=weigths["markers"],
+        target=target[..., : n_shooting + 1],
+        node=Node.ALL,
+        multi_thread=False,
+    )
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+        key="q",
+        weight=weigths["q"],
+        multi_thread=False,
+        index=list(range(abs(10 - nb_q), nb_q)),
+    )
 
     if track_previous:
-        objective_functions.add(ObjectiveFcn.Lagrange.TRACK_STATE, key="q", weight=weigths["q_prev"],
-                                target=q_init[: nb_q, :n_shooting + 1],
-                                node=Node.ALL, multi_thread=False)
-        objective_functions.add(ObjectiveFcn.Lagrange.TRACK_STATE, key="qdot", weight=weigths["qdot_prev"],
-                                target=q_init[nb_q: nb_q * 2, :n_shooting + 1],
-                                node=Node.ALL, multi_thread=False)
+        objective_functions.add(
+            ObjectiveFcn.Lagrange.TRACK_STATE,
+            key="q",
+            weight=weigths["q_prev"],
+            target=q_init[:nb_q, : n_shooting + 1],
+            node=Node.ALL,
+            multi_thread=False,
+        )
+        objective_functions.add(
+            ObjectiveFcn.Lagrange.TRACK_STATE,
+            key="qdot",
+            weight=weigths["qdot_prev"],
+            target=q_init[nb_q : nb_q * 2, : n_shooting + 1],
+            node=Node.ALL,
+            multi_thread=False,
+        )
 
-    #if nb_q > 10:
-        #objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=1000, multi_thread=False,
-        #                        index=list(range(4, 5)), quadratic=False)
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot", weight=1000, multi_thread=False,
-                            index=list(range(9, 10)), quadratic=True, derivative=False)
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="qdot", weight=weigths["qdot"] / 100,
-                            multi_thread=False,
-                            index=list(range(0, abs(10 - nb_q))), derivative=False)
+    # if nb_q > 10:
+    # objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=1000, multi_thread=False,
+    #                        index=list(range(4, 5)), quadratic=False)
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+        key="qdot",
+        weight=1000,
+        multi_thread=False,
+        index=list(range(9, 10)),
+        quadratic=True,
+        derivative=False,
+    )
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+        key="qdot",
+        weight=weigths["qdot"] / 100,
+        multi_thread=False,
+        index=list(range(0, abs(10 - nb_q))),
+        derivative=False,
+    )
 
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_CONTROL, key="tau", weight=weigths["tau"] / 100,
-                            multi_thread=False,
-                            index=list(range(0, abs(10 - nb_q))))
-    objective_functions.add(ObjectiveFcn.Lagrange.MINIMIZE_STATE, key="q", weight=weigths["q"] / 100, multi_thread=False,
-                            index=list(range(0, abs(10 - nb_q))))
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_CONTROL,
+        key="tau",
+        weight=weigths["tau"] / 100,
+        multi_thread=False,
+        index=list(range(0, abs(10 - nb_q))),
+    )
+    objective_functions.add(
+        ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+        key="q",
+        weight=weigths["q"] / 100,
+        multi_thread=False,
+        index=list(range(0, abs(10 - nb_q))),
+    )
 
     return objective_functions
 
 
-def prepare_ocp(biorbd_model_path, final_time, n_shooting,
-                use_sx=False,
-                n_threads=1,
-                mhe=False,
-                kin_init=None,
-                target=None,
-                f_ext=None,
-                with_f_ext=False,
-                weights=None,
-                track_previous=False):
+def prepare_ocp(
+    biorbd_model_path,
+    final_time,
+    n_shooting,
+    use_sx=False,
+    n_threads=1,
+    mhe=False,
+    kin_init=None,
+    target=None,
+    f_ext=None,
+    with_f_ext=False,
+    weights=None,
+    track_previous=False,
+):
     # --- Options --- #
     bio_model = BiorbdModel(biorbd_model_path)
     tau_min, tau_max, tau_init = -10000, 10000, 0
-    objective_functions = get_objectives(weights, bio_model.nb_q, bio_model.nb_markers, n_shooting, with_f_ext,
-                                         track_previous=track_previous, target=target
-                                         )
+    objective_functions = get_objectives(
+        weights,
+        bio_model.nb_q,
+        bio_model.nb_markers,
+        n_shooting,
+        with_f_ext,
+        track_previous=track_previous,
+        target=target,
+    )
     dynamics = DynamicsList()
     if with_f_ext:
-        dynamics.add(custom_configure,
-                     dynamic_function=custom_torque_driven,
-                     expand_dynamics=True)
+        dynamics.add(custom_configure, dynamic_function=custom_torque_driven, expand_dynamics=True)
     else:
         dynamics.add(DynamicsFcn.TORQUE_DRIVEN, expand_dynamics=True)
 
@@ -148,8 +213,8 @@ def prepare_ocp(biorbd_model_path, final_time, n_shooting,
     x_bounds.add("qdot", min_bound=[-1000] * bio_model.nb_tau, max_bound=[1000] * bio_model.nb_tau)
 
     x_init = InitialGuessList()
-    x_init.add("q", kin_init[: bio_model.nb_q, :n_shooting + 1], interpolation=InterpolationType.EACH_FRAME)
-    x_init.add("qdot", kin_init[bio_model.nb_q:, :n_shooting + 1], interpolation=InterpolationType.EACH_FRAME)
+    x_init.add("q", kin_init[: bio_model.nb_q, : n_shooting + 1], interpolation=InterpolationType.EACH_FRAME)
+    x_init.add("qdot", kin_init[bio_model.nb_q :, : n_shooting + 1], interpolation=InterpolationType.EACH_FRAME)
 
     # Define control path constraint
     u_bounds = BoundsList()
@@ -162,33 +227,39 @@ def prepare_ocp(biorbd_model_path, final_time, n_shooting,
         u_init.add("f_ext", f_ext[:, :n_shooting], interpolation=InterpolationType.EACH_FRAME)
     # ------------- #
     if not mhe:
-        return OptimalControlProgram(
-            bio_model=bio_model,
-            dynamics=dynamics,
-            n_shooting=n_shooting,
-            phase_time=final_time,
-            x_init=x_init,
-            u_init=u_init,
-            x_bounds=x_bounds,
-            u_bounds=u_bounds,
-            objective_functions=objective_functions,
-            use_sx=use_sx,
-            n_threads=n_threads,
-        ), bio_model
+        return (
+            OptimalControlProgram(
+                bio_model=bio_model,
+                dynamics=dynamics,
+                n_shooting=n_shooting,
+                phase_time=final_time,
+                x_init=x_init,
+                u_init=u_init,
+                x_bounds=x_bounds,
+                u_bounds=u_bounds,
+                objective_functions=objective_functions,
+                use_sx=use_sx,
+                n_threads=n_threads,
+            ),
+            bio_model,
+        )
     else:
-        return MovingHorizonEstimator(
-            bio_model=bio_model,
-            dynamics=dynamics,
-            window_len=n_shooting,
-            window_duration=final_time,
-            common_objective_functions=objective_functions,
-            x_init=x_init,
-            u_init=u_init,
-            x_bounds=x_bounds,
-            u_bounds=u_bounds,
-            n_threads=n_threads,
-            use_sx=use_sx,
-        ), bio_model
+        return (
+            MovingHorizonEstimator(
+                bio_model=bio_model,
+                dynamics=dynamics,
+                window_len=n_shooting,
+                window_duration=final_time,
+                common_objective_functions=objective_functions,
+                x_init=x_init,
+                u_init=u_init,
+                x_bounds=x_bounds,
+                u_bounds=u_bounds,
+                n_threads=n_threads,
+                use_sx=use_sx,
+            ),
+            bio_model,
+        )
 
 
 def get_solver_options(solver):
@@ -201,6 +272,7 @@ def get_solver_options(solver):
             sol_dict["solver"].set_option_unsafe(val=solver_options[key], name=key)
         sol_dict["solver"].set_convergence_tolerance(1e-4)
         from copy import copy
+
         sol_dict["solver"] = copy(sol_dict["solver"])
         sol_dict["solver"].set_print_level(0)
         sol_dict["solver"].set_qp_solver("PARTIAL_CONDENSING_HPIPM")  # PARTIAL_CONDENSING_OSQP PARTIAL_CONDENSING_HPIPM
@@ -217,6 +289,7 @@ def get_solver_options(solver):
         sol_dict["solver"].set_tol(1e-5)
         sol_dict["solver"].set_linear_solver("ma57")
         from copy import copy
+
         sol_dict["solver_first_iter"] = copy(sol_dict["solver"])
         sol_dict["solver_first_iter"].set_maximum_iterations(100)
         sol_dict["solver_first_iter"].set_tol(1e-5)
@@ -229,10 +302,11 @@ def get_solver_options(solver):
 def get_update_function(markers_init, f_ext, with_f_ext, track_previous, kin_init, n_shooting, model, ocp, save_data):
     def update_functions(mhe, t, _):
         def target_mark(i: int):
-            return markers_init[:, :, i: i + n_shooting + 1]
+            return markers_init[:, :, i : i + n_shooting + 1]
 
         def target_f_ext(i: int):
-            return f_ext[:, i: i + n_shooting + 1]
+            return f_ext[:, i : i + n_shooting + 1]
+
         q_to_track, qdot_to_track = None, None
         if with_f_ext:
             mhe.update_objectives_target(target=target_f_ext(t), list_index=2)
@@ -240,29 +314,36 @@ def get_update_function(markers_init, f_ext, with_f_ext, track_previous, kin_ini
             if track_previous:
                 if ocp.sol is not None:
                     previous_sol = ocp.sol.decision_states(to_merge=SolutionMerge.NODES)
-                q_to_track = previous_sol[
-                    "q"] if ocp.sol is not None else kin_init[:model.nb_q, t:t + n_shooting + 1]
-                qdot_to_track = previous_sol[
-                    "qdot"] if ocp.sol is not None else kin_init[model.nb_q:, t:t + n_shooting + 1]
+                q_to_track = (
+                    previous_sol["q"] if ocp.sol is not None else kin_init[: model.nb_q, t : t + n_shooting + 1]
+                )
+                qdot_to_track = (
+                    previous_sol["qdot"] if ocp.sol is not None else kin_init[model.nb_q :, t : t + n_shooting + 1]
+                )
                 mhe.update_objectives_target(target=q_to_track, list_index=5)
                 mhe.update_objectives_target(target=qdot_to_track, list_index=6)
         else:
             mhe.update_objectives_target(target=target_mark(t), list_index=2)
             if track_previous:
                 previous_sol = ocp.sol.decision_states(to_merge=SolutionMerge.NODES)
-                q_to_track = previous_sol[
-                    "q"] if ocp.sol is not None else kin_init[:model.nb_q, t:t + n_shooting + 1]
-                qdot_to_track = previous_sol[
-                    "qdot"] if ocp.sol is not None else kin_init[model.nb_q:, t:t + n_shooting + 1]
+                q_to_track = (
+                    previous_sol["q"] if ocp.sol is not None else kin_init[: model.nb_q, t : t + n_shooting + 1]
+                )
+                qdot_to_track = (
+                    previous_sol["qdot"] if ocp.sol is not None else kin_init[model.nb_q :, t : t + n_shooting + 1]
+                )
                 mhe.update_objectives_target(target=q_to_track, list_index=5)
                 mhe.update_objectives_target(target=qdot_to_track, list_index=6)
         if ocp.sol is not None and ocp.sol.status != 0:
             print(f"Only {t} iterations were done.")
-            #return False
+            # return False
         if ocp.sol:
-            save_iteration(target_f_ext(t), target_mark(t), q_to_track, qdot_to_track, ocp.sol, t, "_iterations_tmp.bio")
-        #return t < kin_init.shape[1] - (n_shooting + 1)
+            save_iteration(
+                target_f_ext(t), target_mark(t), q_to_track, qdot_to_track, ocp.sol, t, "_iterations_tmp.bio"
+            )
+        # return t < kin_init.shape[1] - (n_shooting + 1)
         if t % 500 == 0:
             print(t, "iterations done.")
         return t < 2000
+
     return update_functions
