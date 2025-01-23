@@ -16,7 +16,7 @@ def plot_muscle_activation(muscle_activations, emg=None, muscle_names=None, musc
         plt.plot(act, color="b")
         if emg is not None and i in muscle_track_idx:
             plt.plot(emg[muscle_track_idx.index(i), :], color="r")
-        plt.plot(q[-2, :] / 10, color="g")
+        # plt.plot(q[-2, :] / 10, color="g")
         plt.title(muscle_names[i])
         plt.xlabel("Time (s)")
         plt.ylabel("Muscle activation")

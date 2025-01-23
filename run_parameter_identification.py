@@ -10,13 +10,13 @@ import numpy as np
 
 
 weights = {
-    "tau_tracking": 10,
-    "activation_tracking": 0,
-    "min_act": 10,
-    "min_f_iso": 1,
-    "min_lm_optim": 1,
+    "tau_tracking": 0.1,
+    "activation_tracking": 5,
+    "min_act": 1,
+    "min_f_iso": 3,
+    "min_lm_optim": 0.1,
     # "min_lt_slack": 0,
-    # "min_pas_torque": 1,
+    "min_pas_torque": 1,
     # "bound_lnorm": 0 #10000
 }
 
@@ -89,7 +89,7 @@ def initialize_bounds_and_mapping(optim_param_list, biorbd_model_path, q, use_p_
     eigen_model = biorbd.Model(biorbd_model_path)
     for p_idx, param in enumerate(optim_param_list):
         if param == "f_iso":
-            param_bounds[p_idx] = [0.5, 2]
+            param_bounds[p_idx] = [0.1, 3]
         elif param == "lm_optim":
             all_muscle_len = get_all_muscle_len(eigen_model, q)
             param_bounds[p_idx] = [0.5, 2]
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     with_param = True
     with_residual_torque = False
     use_ratio_tracking = True
-    save_data = True
+    save_data = False
     participants = [f"P{i}" for i in range(10, 17)]
     params_to_optimize = [
         Parameters.f_iso,
@@ -158,7 +158,7 @@ if __name__ == "__main__":
     files, part = get_all_file(
         participants, data_dir, to_include=["reference_torque_gear_20_with_technical_marker.bio"]
     )
-    n_cycles = [3, 1, 2, 3, 4, 5]
+    n_cycles = [4, 1, 2, 3, 4, 5]
     batch_size = 3
     date = time.strftime("%Y-%m-%d_%H-%M")
     for file, participant in zip(files, part):
@@ -191,9 +191,9 @@ if __name__ == "__main__":
             )
             weights_tmp = weights.copy()
             if "min_lm_optim" in weights:
-                weights_tmp["lm_optim"] = weights["min_lm_optim"] * n_cycle  # + 10 * (n_cycles - 1)
+                weights_tmp["lm_optim"] = weights["min_lm_optim"]  # * n_cycle  # + 10 * (n_cycles - 1)
             if "min_f_iso" in weights:
-                weights_tmp["min_f_iso"] = weights["min_f_iso"] * n_cycle  # + 10 * (n_cycles - 1)
+                weights_tmp["min_f_iso"] = weights["min_f_iso"]  # * n_cycle  # + 10 * (n_cycles - 1)
             for i in range(batch_size):
                 identifier.load_experimental_data(update_data(initial_data, idx_random[i]))
                 param_bounds, p_init, p_mapping_list, MTU_len, list_mapping = initialize_bounds_and_mapping(
@@ -218,7 +218,7 @@ if __name__ == "__main__":
                 identifier.solve(
                     save_results=save_data,
                     output_file=output_file,
-                    max_iter=1000,
+                    max_iter=1500,
                     hessian_approximation="exact",
                     linear_solver="ma57",
                     # obj_scaling_factor=0.0001,
@@ -229,7 +229,7 @@ if __name__ == "__main__":
                     # mu_strategy="adaptive",
                     # nlp_scaling_method = "none",
                     plot=True,
-                    objective_scale_factor=10,
+                    objective_scale_factor=100,
                     cycle_number=idx_random[i],
                     batch_number=i,
                 )

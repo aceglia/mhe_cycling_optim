@@ -72,7 +72,7 @@ if __name__ == "__main__":
     data_rate = 120
     final_time = 0.12
     n_shooting = int(final_time * data_rate)
-    participants = [f"P{i}" for i in range(10, 17)]
+    participants = [f"P{i}" for i in range(14, 15)]
     data_dir = "/mnt/shared/Projet_hand_bike_markerless/RGBD"
     trials = ["gear_20"]  # ["gear_5", "gear_10", "gear_15", "gear_20"]
     # model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial_short}_model_scaled_{source[:-2]}_ribs_new_seth_param.bioMod"
@@ -85,7 +85,7 @@ if __name__ == "__main__":
         file_path = (
             prefix
             + f"/Projet_hand_bike_markerless/process_data/{participant}"
-            + f"/result_biomech_{trial_short}_with_technical_marker.bio"
+            + f"/result_biomech_{trial_short}_with_technical_marker_params.bio"
         )
         output_path = (
             prefix

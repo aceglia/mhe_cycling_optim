@@ -15,8 +15,8 @@ def get_all_muscle_len(model, q):
 
 
 def generate_random_idx(n_cycles, batch, n_data):
-    random.seed(1000)
-    combinations = list(itertools.combinations(list(range(1, int(n_data - 1))), n_cycles))
+    random.seed(100)
+    combinations = list(itertools.combinations(list(range(5, int(n_data - 5))), n_cycles))
     random_idx = random.sample(range(0, len(combinations)), batch)
     return [list(combinations[i]) for i in random_idx]
 
@@ -184,8 +184,8 @@ def get_cost_to_map(
 
         if bounds_l_norm:
             g = norm_len
-        else:
-            j += weights["bound_lnorm"] * ca.exp(40 - 80 * norm_len)
+        # else:
+        #     j += weights["bound_lnorm"] * ca.exp(40 - 80 * norm_len)
 
     for m in range(x.shape[0]):
         if m not in muscle_track_idx:
@@ -209,7 +209,7 @@ def get_cost_to_map(
 
         else:
             continue
-        factor = 1 if t in [9] else 1
+        factor = 1 if t in [6] else 1
         factor = 1 if t in [15] else factor
         j += factor * weights["tau_tracking"] * ((tau[t] * scaling_factor[2] - to_substract) ** 2)
     return j, g

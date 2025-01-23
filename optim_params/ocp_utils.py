@@ -325,22 +325,21 @@ def get_update_function(markers_init, f_ext, with_f_ext, track_previous, kin_ini
         else:
             mhe.update_objectives_target(target=target_mark(t), list_index=2)
             if track_previous:
-                previous_sol = ocp.sol.decision_states(to_merge=SolutionMerge.NODES)
+                if ocp.sol is not None:
+                    previous_sol = ocp.sol.decision_states(to_merge=SolutionMerge.NODES)
                 q_to_track = (
                     previous_sol["q"] if ocp.sol is not None else kin_init[: model.nb_q, t : t + n_shooting + 1]
                 )
                 qdot_to_track = (
                     previous_sol["qdot"] if ocp.sol is not None else kin_init[model.nb_q :, t : t + n_shooting + 1]
                 )
-                mhe.update_objectives_target(target=q_to_track, list_index=5)
-                mhe.update_objectives_target(target=qdot_to_track, list_index=6)
+                mhe.update_objectives_target(target=q_to_track, list_index=4)
+                mhe.update_objectives_target(target=qdot_to_track, list_index=5)
         if ocp.sol is not None and ocp.sol.status != 0:
             print(f"Only {t} iterations were done.")
             # return False
         if ocp.sol:
-            save_iteration(
-                target_f_ext(t), target_mark(t), q_to_track, qdot_to_track, ocp.sol, t, "_iterations_tmp.bio"
-            )
+            save_iteration(ocp.sol, "_iterations_tmp.bio")
         # return t < kin_init.shape[1] - (n_shooting + 1)
         if t % 500 == 0:
             print(t, "iterations done.")

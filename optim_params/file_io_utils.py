@@ -122,7 +122,7 @@ def get_all_file(participants, data_dir, trial_names=None, to_include=(), to_exc
     return sum(all_path, []), sum(parts, [])
 
 
-def save_iteration(f_ext, markers, q_to_track, q_dot_to_track, sol, t, file_path):
+def save_iteration(sol, file_path):
     merged_states = sol.decision_states(to_merge=SolutionMerge.NODES)
     merged_controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
     dic_to_save = {}
@@ -132,38 +132,3 @@ def save_iteration(f_ext, markers, q_to_track, q_dot_to_track, sol, t, file_path
     if "f_ext" in merged_controls.keys():
         dic_to_save["f_ext"] = merged_controls["f_ext"][..., 0:1]
     save(dic_to_save, file_path, add_data=True)
-
-
-def save_torque_estimation(file_path, torque_estimation):
-    """
-    This function saves the torque estimation to a file.
-    :param file_path:
-    :param torque_estimation:
-    :return:
-    """
-    empty_dict = {
-        "q_ocp": merged_states["q"],
-        "qdot_ocp": merged_states["qdot"],
-        "tau_ocp": merged_controls["tau"],
-        "q_init": kalman_data[source]["q_raw"][:, n_start:n_stop][..., ::2][:, : -(n_shooting + 1)],
-        "qdot_init": kalman_data[source]["q_dot"][:, n_start:n_stop][..., ::2][:, : -(n_shooting + 1)],
-        # "tau_init": kalman_data[source]["tau"][:, n_start:n_stop - (n_shooting + 1)],
-        "q_id": q_id[:, :-(n_shooting)],
-        "qdot_id": q_dot_id[:, :-(n_shooting)],
-        "qddot_id": q_ddot_id[:, :-(n_shooting)],
-        "tau_id": tau_id[:, :-(n_shooting)],
-        "markers": markers_init[:, :, : -(n_shooting + 1)],
-        "emg": kalman_data["emg"][:, n_start:n_stop][..., ::2][:, : -(n_shooting + 1)],
-        "peaks": peaks,
-        "use_mhe": with_mhe,
-        "n_shooting": n_shooting,
-        "ocp_time": final_time,
-        "n_start": n_start,
-        "n_stop": n_stop,
-        "f_ext": None,
-        "total_time_mhe": time.time() - tic,
-    }
-
-    if with_f_ext:
-        save_dic["f_ext_ocp"] = merged_controls["f_ext"]
-        save_dic["init_f_ext"] = f_ext[:, : -(n_shooting + 1)]
