@@ -586,8 +586,8 @@ def plot_cycles(
 
 if __name__ == "__main__":
     part = "P11"
-    participants = ["P14"]  # , "P11", "P13", "P14"]
-    trials = ["gear_20"]
+    participants = ["P11"]  # , "P11", "P13", "P14"]
+    trials = ["gear_5"]
     cycle = 5
     result_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/results"
     for trial in trials:

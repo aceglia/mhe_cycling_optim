@@ -340,9 +340,11 @@ def get_update_function(markers_init, f_ext, with_f_ext, track_previous, kin_ini
             # return False
         if ocp.sol:
             save_iteration(ocp.sol, "_iterations_tmp.bio")
-        # return t < kin_init.shape[1] - (n_shooting + 1)
         if t % 500 == 0:
             print(t, "iterations done.")
-        return t < 2000
+        return t < kin_init.shape[1] - (n_shooting + 1)
+        #if t % 500 == 0:
+        #    print(t, "iterations done.")
+        #return t < 2000
 
     return update_functions

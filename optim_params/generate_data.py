@@ -184,6 +184,7 @@ class TorqueEstimator:
         self.tau_ocp = iterations["tau"]
         if self.with_external_loads:
             self.f_ext_ocp = iterations["f_ext"]
+        self.status = iterations["status"]
 
     def _save_data(self, output_path, adapt_size=True):
         final_data_to_save = {}

@@ -1,3 +1,5 @@
+from fontTools.ttLib.tables.otTables import DeltaSetIndexMap
+
 from biosiglive import load
 import matplotlib.pyplot as plt
 import numpy as np
@@ -60,19 +62,50 @@ def get_id_torque(q, q_dot, model=None, f_ext=None, rate=60):
         tau_from_b[:, i] = model.InverseDynamics(q[:, i], qdot[:, i], qddot[:, i], ext_load).to_array()
     return tau_from_b
 
+def get_fd_torque(file_path, delta_init=0, final_idx=None):
+    key_to_keep = ["q_ocp", "q_dot_ocp", "tau_ocp"]
+    data_mhe = load(file_path)
+    data_mhe_tmp = {}
+    for key in key_to_keep:
+        final_idx = data_mhe[key].shape[-1] if final_idx is None else final_idx
+        data_mhe_tmp[key] = data_mhe[key][:, delta_init:final_idx]
+    return data_mhe_tmp["tau_ocp"]
+
+
+def return_data_from_file(data_path, torque_mhe_file, delta_init=0, final_idx=None):
+    tau_fd = get_fd_torque(torque_mhe_file, delta_init=delta_init, final_idx=final_idx)
+    final_idx = min(tau_fd.shape[1] + delta_init, final_idx) if final_idx is not None else tau_fd.shape[1]
+    result_tmp = load(data_path, merge=True)
+    final_idx = result_tmp["q_est"].shape[1] if final_idx is None else final_idx
+    emg = result_tmp["muscles_target"][:, delta_init:final_idx]
+    act = result_tmp["u_est"][:, delta_init:final_idx]
+    muscle_tracked = act[result_tmp["muscle_track_idx"][:, 0], :]
+    stat = result_tmp["stat"][delta_init:final_idx]
+    sol_freq = result_tmp["sol_freq"][delta_init:final_idx]
+    markers_ref = np.nan_to_num(result_tmp["kin_target"][:, :, delta_init:final_idx])
+    q_est = result_tmp["q_est"][:, delta_init:final_idx]
+    q_dot_est = result_tmp["dq_est"][:, delta_init:final_idx]
+    f_ext = result_tmp["f_ext"][:, delta_init:final_idx]
+    tau_res_init = result_tmp["tau_est"][:, delta_init:final_idx]
+    markers_est = np.array([biomodel.markers(q_est[:, k]) for k in range(q_est.shape[1])])
+    markers_est_array = np.zeros((3, markers_est.shape[1], markers_est.shape[0]))
+    for m in range(markers_est.shape[0]):
+        markers_est_array[:, :, m] = np.array([mark.to_array() for mark in markers_est[m]]).T
+    q_est = np.nan_to_num(q_est)
+    mus_tau = get_muscular_torque(
+        np.concatenate((q_est, q_dot_est), axis=0),
+        np.clip(act, 0.00001, 0.9999999),
+        biomodel,
+        parameters_file_path=parameters_file_path,
+    )
+    return result_tmp, emg, act, muscle_tracked, stat, sol_freq, q_est, q_dot_est, f_ext, tau_res_init, markers_ref, markers_est_array, mus_tau, tau_fd
+
 
 if __name__ == "__main__":
-    delta_init, delta_final = 10, 10
-    participants = [f"P{i}" for i in range(10, 15)]
-    if "P12" in participants:
-        participants.pop(participants.index("P12"))
-    # participants.pop(participants.index("P15"))
-    # participants.pop(participants.index("P16"))
-    all_params = np.zeros((len(participants), 2, 35))
+    delta_init, final_idx = 10, 10000
+    participants = [f"P{i}" for i in range(10, 17)]
     init_trials = [["gear_5", "gear_10", "gear_15", "gear_20"]] * len(participants)
-    # init_trials = [["gear_10"]] * len(participants)
-
-    result_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/results"
+    result_dir = f"/home/mickaelbegon/Documents/Amedeo/results_optim_params"
     idx = 0
     mean_tau = np.zeros((len(init_trials[0]), len(participants)))
     std_tau = np.zeros((len(init_trials[0]), len(participants)))
@@ -90,18 +123,16 @@ if __name__ == "__main__":
     optim = [True, False]
     non_conv = []
     all_iter_full = []
-    n_cycle = [1, 2, 3, 4, 5, 6]  # 1, 2, 3, 4, 5]
-    dyn = ["fd"]
-    len_d = len(dyn) + 1
-    have_converged = [[]] * len_d
+    cycles = ["", "1", "2", "3", "4"]
+    have_converged = [[]]
 
     cycle_tau_error = []
     cycle_mark_error = []
     cycle_emg_error = []
-    final_error = np.zeros((len_d, 4, len(n_cycle), 3))
-    non_onv_iter = np.zeros((len_d, len(n_cycle)))
-    total_nb_iter = np.zeros((len_d, len(n_cycle)))
-    all_freq = np.zeros((2, len_d, len(n_cycle)))
+    final_error = np.zeros((4, len(cycles), 3))
+    non_onv_iter = np.zeros((len(cycles)))
+    total_nb_iter = np.zeros((len(cycles)))
+    all_freq = np.zeros((2, len(cycles)))
 
     count = 0
 
@@ -113,212 +144,169 @@ if __name__ == "__main__":
 """
     )
 
-    for c, cycle in enumerate(n_cycle):
-        if cycle == n_cycle[-1]:
-            dyn.append("")
-        for d, dy in enumerate(dyn):
-            opt = dy != ""
-            prefix = ""
-            if opt is False and cycle != n_cycle[-1]:
-                continue
-            elif opt is False and cycle == n_cycle[-1]:
-                prefix = f"Ucal"
-                cycle = 1
-            if d == 0 and c == 0 and opt is True:
-                prefix = ""
+    #for c, cycle in enumerate(n_cycle):
+    for c, cycle in enumerate(cycles):
+        if cycle== "":
+            prefix = f"Ucal"
+        all_iter = 0
+        freq = 0
+        std_freq = 0
+        proportion_non_conv = 0
+        rmse_mark = None
+        rmse_tau = None
+        rmse_emg = None
+        mean_tau = None
+        for p, part in enumerate(participants):
+            result_dir = f"/home/mickaelbegon/Documents/Amedeo/results_optim_params/{part}"
+            pool_mark_mat = None
+            pool_tau_mat = None
+            pool_emg_mat = None
+            pool_res_tau = None
             nb_non_conv = 0
-            all_iter = 0
-            freq = 0
-            std_freq = 0
-            for p, part in enumerate(participants):
-                result_dir = f"/mnt/shared/Projet_hand_bike_markerless/optim_params/results/{part}"
-                for t, trial in enumerate(init_trials[p]):
-                    if opt:
-                        model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial}_model_scaled_dlc_ribs_new_seth_param_params_{dy}_{cycle}.bioMod"
-                    else:
-                        model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial}_model_scaled_dlc_ribs_new_seth_param.bioMod"
-                    model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/models/{trial}_model_scaled_dlc_ribs_new_seth_param.bioMod"
-                    file_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}"
-                    all_dir = os.listdir(file_dir)
-                    trial_dir = [dir for dir in all_dir if trial in dir and "result" not in dir][0]
-                    mhe_file = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/{trial_dir}/result_mhe_torque_driven_{trial}_comparison.bio"
-                    suffix = "test_quad"
-                    parameters_file_path = None
-                    if opt is True:
-                        parameters_file_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{cycle}_{suffix}.bio"
-                    data_mhe = None
-                    if mhe_file:
-                        key_to_keep = ["q", "qdot", "tau"]
-                        data_mhe = load(mhe_file)
-                        data_mhe_tmp = {}
-                        for key in key_to_keep:
-                            data_mhe_tmp[key] = data_mhe[key]
-                    else:
-                        raise RuntimeError("No mhe file provided")
 
-                    biomodel = biorbd.Model(model)
-                    file_dy = f"_{dy}" if dy != "" else ""
+            for t, trial in enumerate(init_trials[p]):
+                if part == "P10" and trial == "gear_5":
+                    continue
+                model = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/output_models/{trial}_model_scaled_dlc_technical_marker_params_static_root.bioMod"
+                file_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}"
+                all_dir = os.listdir(file_dir)
+                trial_dir = [dir for dir in all_dir if trial in dir and "result" not in dir][0]
+                mhe_file = f"/mnt/shared/Projet_hand_bike_markerless/optim_params/reference_data/{part}/reference_torque_{trial}_with_technical_marker_final_optim_param.bio"
+                parameters_file_path = None
+                if cycle != "":
+                    parameters_file_path = f"/mnt/shared/Projet_hand_bike_markerless/optim_params/results_2025-04-14_17-42/{part}/gear_20_n_cycles_{cycle}.bio"
 
-                    data_path = (
-                        result_dir
-                        + os.sep
-                        + f"result_mhe_{trial}_dlc_1_optim_param_{str(opt)}{file_dy}_{cycle}_half_{suffix}.bio"
+
+                biomodel = biorbd.Model(model)
+
+                data_path = (
+                    result_dir
+                    + os.sep
+                    + f"result_mhe_{trial}_optim_param_{cycle != ''}_cycle_{cycle}_mhe_0_08_int_1_w4.bio"
+                )
+                if not os.path.exists(data_path):
+                    print(data_path, "not found")
+                    continue
+
+                (result_tmp, emg, act, muscle_tracked, stat, sol_freq, q_est, q_dot_est,
+                 f_ext, tau_res_init, markers_ref, markers_est_array, mus_tau, tau_fd) = return_data_from_file(data_path, mhe_file, delta_init, final_idx)
+
+                nb_non_conv += (len(stat) - stat.count(0)) * 100 / len(stat)
+                #all_iter += act[0, :].shape[0]
+                freq += float(np.mean(sol_freq))
+                std_freq += float(np.std(sol_freq))
+                tau_tot = np.array([max(tau) for tau in np.abs(mus_tau + tau_res_init)])
+                tau_res = (
+                    np.abs(tau_res_init[:-1, :])
+                    / np.repeat(tau_tot[:-1, None], tau_res_init.shape[1], axis=1)
+                    * 100
+                )
+                tau_res = tau_res_init
+
+                rmse_tau[0, t, p] = np.sqrt(
+                    np.mean(((tau_fd[..., :] - (mus_tau + tau_res_init)) ** 2), axis=1) #* 100 / tau_tot
+                ).mean()
+                rmse_tau[1, t, p] = np.mean(
+                    np.std(tau_fd[..., :] - (mus_tau + tau_res_init), axis=1) #* 100 / tau_tot
+                )
+                # rmse_tau[0, t, p] = np.sqrt(np.mean(((tau_id[..., :] - (mus_tau + tau_res_init)) ** 2), axis=1)).mean()
+                # rmse_tau[1, t, p] = np.mean(np.std(tau_id[..., :] - (mus_tau + tau_res_init), axis=1))
+                # plt.plot(tau_id[-2, :], c="r")
+                # plt.plot(data_mhe["tau"][-2, delta_init:-delta_final], c="g")
+                # plt.plot((mus_tau + tau_res_init)[-2, :])
+                # plt.figure("q")
+                # plt.plot(data_mhe["q"][-2, delta_init:-delta_final], c="r")
+                # plt.plot(q_est[-2, :data_mhe["tau"].shape[1]])
+                # plt.figure("qdot")
+                # plt.plot(data_mhe["qdot"][-2, delta_init:-delta_final], c="r")
+                # plt.plot(q_dot_est[-2, :])
+                # plt.show()
+
+                mean_tau[t, p] = np.median(tau_res[3:, ...], axis=1).mean()
+                # mean_tau[t, p] = np.sqrt(np.mean(tau_res ** 2, axis=1)).mean()
+                std_tau[t, p] = np.std(tau_res[3:, ...], axis=1).mean()
+                rmse_mark[t, p] = np.mean(
+                    np.sqrt(np.mean(((markers_ref * 1000 - markers_est_array * 1000) ** 2), axis=0)), axis=1
+                ).mean()
+                std_mark[t, p] = np.mean(
+                    np.std(np.mean((markers_ref * 1000 - markers_est_array * 1000), axis=0), axis=1)
+                )
+                rmse_emg[t, p] = np.sqrt(np.mean(((emg - muscle_tracked) ** 2), axis=1)).mean() * 100
+                std_emg[t, p] = np.mean(np.std((emg - muscle_tracked), axis=1)) * 100
+                for i in range(emg.shape[0]):
+                    corr_matrix = np.corrcoef(emg[i, :], muscle_tracked[i, :])
+                    rs_emg[t, p] += corr_matrix[0, 1] ** 2
+                rs_emg[t, p] /= emg.shape[0]
+
+                for i in range(tau_fd.shape[0] - 1):
+                    corr_matrix = np.corrcoef(tau_fd[i, :], (mus_tau + tau_res_init)[i, :])
+                    rmse_tau[2, t, p] += corr_matrix[0, 1] ** 2
+                rmse_tau[2, t, p] /= tau_fd.shape[0]
+                if rmse_tau[2, t, p] > 1:
+                    pass
+
+                for i in range(0, markers_est_array.shape[1]):
+                    corr_matrix = np.corrcoef(
+                        np.mean(markers_ref[:, i, :], axis=0) * 1000,
+                        np.mean(markers_est_array[:, i, :], axis=0) * 1000,
                     )
-                    if not os.path.exists(data_path):
-                        print(data_path, "not found")
-                        continue
-                    result_tmp = load(data_path, merge=False)
-                    emg = np.array([k["muscles_target"][:, idx] for k in result_tmp][delta_init:-delta_final]).T
-                    act = np.array([k["u_est"][:, idx] for k in result_tmp][delta_init:-delta_final]).T
-                    stat = [k["stat"] for k in result_tmp][delta_init:-delta_final]
-                    sol_freq = [k["sol_freq"] for k in result_tmp][1:]
-                    nb_non_conv += np.argwhere(np.isnan(act[0, :])).shape[0]
-                    all_iter += act[0, :].shape[0]
-                    freq += float(np.mean(sol_freq))
-                    std_freq += float(np.std(sol_freq))
-                    # if np.argwhere(np.isnan(act)).shape[0] != 0:
-                    #     have_converged[count].append(False)
-                    # act = np.nan_to_num(act)
-                    muscle_track_idx = result_tmp[0]["muscle_track_idx"]
-                    muscle_tracked = act.copy()[muscle_track_idx, :]
-                    markers_ref = np.nan_to_num(
-                        np.array([k["kin_target"][:, :, idx] for k in result_tmp][delta_init:-delta_final]).T
-                    )
-                    markers_ref = np.swapaxes(markers_ref, 0, 1)
-                    q_est = np.array([k["q_est"][:, idx] for k in result_tmp][delta_init:-delta_final]).T
-                    q_dot_est = np.array([k["dq_est"][:, idx] for k in result_tmp][delta_init:-delta_final]).T
-                    f_ext = np.array([k["f_ext"][:, idx] for k in result_tmp][delta_init:-delta_final]).T
-                    markers_est = np.array([biomodel.markers(q_est[:, k]) for k in range(q_est.shape[1])])
-                    markers_est_array = np.zeros((3, markers_est.shape[1], markers_est.shape[0]))
-                    for m in range(markers_est.shape[0]):
-                        markers_est_array[:, :, m] = np.array([mark.to_array() for mark in markers_est[m]]).T
-                    # markers_est_array = np.nan_to_num(markers_est_array)
-                    q_est = np.nan_to_num(np.array([k["q_est"][:, idx] for k in result_tmp][delta_init:-delta_final]).T)
-                    # mus_tau = get_muscular_torque(np.concatenate((q_est, q_dot_est), axis=0), np.clip(act, 0.00001, 0.9999999), biomodel)
-                    tau_res_init = np.array([k["tau_est"][:, idx] for k in result_tmp][delta_init:-delta_final]).T
-                    # total_tau = np.abs(np.array([max(tau) for tau in mus_tau + tau_res]))
-                    # tau_res = np.abs(tau_res) * 100 / np.repeat(total_tau[:, None], tau_res.shape[1], axis=1)
-                    mus_tau = get_muscular_torque(
-                        np.concatenate((q_est, q_dot_est), axis=0),
-                        np.clip(act, 0.00001, 0.9999999),
-                        biomodel,
-                        parameters_file_path=parameters_file_path,
-                    )
-                    tau_id = get_id_torque(q_est, q_dot_est, biomodel, f_ext, rate=60)
-                    tai_id = data_mhe_tmp["tau"][delta_init:-delta_final]
+                    rs_mark[t, p] += corr_matrix[0, 1] ** 2
+                rs_mark[t, p] /= markers_ref.shape[1]
 
-                    tau_tot = np.array([max(tau) for tau in np.abs(mus_tau + tau_res_init)])
-                    tau_res = (
-                        np.abs(tau_res_init[:-1, :])
-                        / np.repeat(tau_tot[:-1, None], tau_res_init.shape[1], axis=1)
-                        * 100
-                    )
-                    rmse_tau[0, t, p] = np.sqrt(
-                        np.mean(((tau_id[..., :] - (mus_tau + tau_res_init)) ** 2), axis=1) * 100 / tau_tot
-                    ).mean()
-                    rmse_tau[1, t, p] = np.mean(
-                        np.std(tau_id[..., :] - (mus_tau + tau_res_init), axis=1) * 100 / tau_tot
-                    )
-                    # rmse_tau[0, t, p] = np.sqrt(np.mean(((tau_id[..., :] - (mus_tau + tau_res_init)) ** 2), axis=1)).mean()
-                    # rmse_tau[1, t, p] = np.mean(np.std(tau_id[..., :] - (mus_tau + tau_res_init), axis=1))
-                    # plt.plot(tau_id[-2, :], c="r")
-                    # plt.plot(data_mhe["tau"][-2, delta_init:-delta_final], c="g")
-                    # plt.plot((mus_tau + tau_res_init)[-2, :])
-                    # plt.figure("q")
-                    # plt.plot(data_mhe["q"][-2, delta_init:-delta_final], c="r")
-                    # plt.plot(q_est[-2, :data_mhe["tau"].shape[1]])
-                    # plt.figure("qdot")
-                    # plt.plot(data_mhe["qdot"][-2, delta_init:-delta_final], c="r")
-                    # plt.plot(q_dot_est[-2, :])
-                    # plt.show()
+        rmse_mark, std_mark = np.nan_to_num(rmse_mark), np.nan_to_num(std_mark)
+        rmse_emg, std_emg = np.nan_to_num(rmse_emg), np.nan_to_num(std_emg)
+        mean_tau, std_tau = np.nan_to_num(mean_tau), np.nan_to_num(std_tau)
+        rmse_tau = np.nan_to_num(rmse_tau)
+        rs_mark = np.nan_to_num(rs_mark)
+        rs_emg = np.nan_to_num(rs_emg)
+        final_error[0, c, :] = np.round(
+            [np.mean(rmse_mark[rmse_mark != 0]), np.mean(std_mark[std_mark != 0]), np.mean(rs_mark[rs_mark != 0])],
+            2,
+        )
+        final_error[2, c, :2] = np.round([np.mean(mean_tau[mean_tau != 0]), np.mean(std_tau[std_tau != 0])], 2)
+        final_error[1, c, :] = np.round(
+            [np.mean(rmse_emg[rmse_emg != 0]), np.mean(std_emg[std_emg != 0]), np.mean(rs_emg[rs_emg != 0])], 2
+        )
+        final_error[3, c, :] = np.round(
+            [
+                np.mean(rmse_tau[0, ...][rmse_tau[0, ...] != 0]),
+                np.mean(rmse_tau[1, ...][rmse_tau[1, ...] != 0]),
+                np.mean(rmse_tau[2, ...][rmse_tau[2, ...] != 0]),
+            ],
+            2,
+        )
 
-                    mean_tau[t, p] = np.mean(tau_res, axis=1).mean()
-                    mean_tau[t, p] = np.median(tau_res, axis=1).mean()
-                    # mean_tau[t, p] = np.sqrt(np.mean(tau_res ** 2, axis=1)).mean()
-                    std_tau[t, p] = np.std(tau_res, axis=1).mean()
-                    rmse_mark[t, p] = np.mean(
-                        np.sqrt(np.mean(((markers_ref * 1000 - markers_est_array * 1000) ** 2), axis=0)), axis=1
-                    ).mean()
-                    std_mark[t, p] = np.mean(
-                        np.std(np.mean((markers_ref * 1000 - markers_est_array * 1000), axis=0), axis=1)
-                    )
-                    rmse_emg[t, p] = np.sqrt(np.mean(((emg - muscle_tracked) ** 2), axis=1)).mean() * 100
-                    std_emg[t, p] = np.mean(np.std((emg - muscle_tracked), axis=1)) * 100
-                    for i in range(emg.shape[0]):
-                        corr_matrix = np.corrcoef(emg[i, :], muscle_tracked[i, :])
-                        rs_emg[t, p] += corr_matrix[0, 1] ** 2
-                    rs_emg[t, p] /= emg.shape[0]
+        non_onv_iter[c] = nb_non_conv
+        all_freq[0, c] = freq / (len(participants) * len(init_trials[0]))
+        all_freq[1, c] = std_freq / (len(participants) * len(init_trials[0]))
 
-                    for i in range(tau_id.shape[0] - 1):
-                        corr_matrix = np.corrcoef(tau_id[i, :], (mus_tau + tau_res_init)[i, :])
-                        rmse_tau[2, t, p] += corr_matrix[0, 1] ** 2
-                    rmse_tau[2, t, p] /= tau_id.shape[0]
-                    if rmse_tau[2, t, p] > 1:
-                        pass
+        before = ""
+        #b_i = "" if cycle != -1 else r"\textbf{"
+        #b_e = "" if cycle != -1 else r"}"
+        #if d == 0 and opt is True:
 
-                    for i in range(3, markers_est_array.shape[1]):
-                        corr_matrix = np.corrcoef(
-                            np.mean(markers_ref[:, i, :], axis=0) * 1000,
-                            np.mean(markers_est_array[:, i, :], axis=0) * 1000,
-                        )
-                        rs_mark[t, p] += corr_matrix[0, 1] ** 2
-                    rs_mark[t, p] /= markers_ref.shape[1] - 3
+        before = f"$Cal_{cycle}$" if cycle != "" else f"$UCal$"
+        #dy_to_print = dy if opt is True else "N/A"
+        b_i, b_e = "", ""
 
-            rmse_mark, std_mark = np.nan_to_num(rmse_mark), np.nan_to_num(std_mark)
-            rmse_emg, std_emg = np.nan_to_num(rmse_emg), np.nan_to_num(std_emg)
-            mean_tau, std_tau = np.nan_to_num(mean_tau), np.nan_to_num(std_tau)
-            rmse_tau = np.nan_to_num(rmse_tau)
-            rs_mark = np.nan_to_num(rs_mark)
-            rs_emg = np.nan_to_num(rs_emg)
-            final_error[d, 0, c, :] = np.round(
-                [np.mean(rmse_mark[rmse_mark != 0]), np.mean(std_mark[std_mark != 0]), np.mean(rs_mark[rs_mark != 0])],
-                2,
-            )
-            final_error[d, 2, c, :2] = np.round([np.mean(mean_tau[mean_tau != 0]), np.mean(std_tau[std_tau != 0])], 2)
-            final_error[d, 1, c, :] = np.round(
-                [np.mean(rmse_emg[rmse_emg != 0]), np.mean(std_emg[std_emg != 0]), np.mean(rs_emg[rs_emg != 0])], 2
-            )
-            final_error[d, 3, c, :] = np.round(
-                [
-                    np.mean(rmse_tau[0, ...][rmse_tau[0, ...] != 0]),
-                    np.mean(rmse_tau[1, ...][rmse_tau[1, ...] != 0]),
-                    np.mean(rmse_tau[2, ...][rmse_tau[2, ...] != 0]),
-                ],
-                2,
-            )
+        print(
+            prefix + before + f"&"
+            f" {b_i}{final_error[ 0, c, 0]:0,.2f}{b_e} & {b_i}{final_error[0, c, 1]:0,.2f}{b_e} & {b_i}{final_error[0, c, 2]:0,.2f}{b_e} &"
+            f" {b_i}{final_error[ 1, c, 0]:0,.2f}{b_e} & {b_i}{final_error[1, c, 1]:0,.2f}{b_e} & {b_i}{final_error[1, c, 2]:0,.2f}{b_e} &"
+            f" {b_i}{final_error[ 3, c, 0]:0,.2f}{b_e} & {b_i}{final_error[3, c, 1]:0,.2f}{b_e} & {b_i}{final_error[3, c, 2]:0,.2f}{b_e} &"
+            f" {b_i}{final_error[ 2, c, 0]:0,.2f}{b_e} & {b_i}{final_error[2, c, 1]:0,.2f}{b_e} & "
+            f" {b_i}{all_freq[0,  c]:0,.2f}{b_e} & {b_i}{all_freq[1, c]:0,.2f}{b_e}" + r"\\"
+        )
 
-            non_onv_iter[d, c] = nb_non_conv
-            total_nb_iter[d, c] = all_iter
-            all_freq[0, d, c] = freq / (len(participants) * len(init_trials[0]))
-            all_freq[1, d, c] = std_freq / (len(participants) * len(init_trials[0]))
+        # all_mark_error.append(np.round([np.mean(rmse_mark[rmse_mark != 0]), np.mean(std_mark[std_mark != 0]), np.mean(rs_mark[rs_mark != 0])], 2))
+        # all_tau_error.append(np.round([np.mean(mean_tau[mean_tau != 0]), np.mean(std_tau[std_tau != 0])], 2))
+        # all_emg_error.append(np.round([np.mean(rmse_emg[rmse_emg != 0]), np.mean(std_emg[std_emg != 0]), np.mean(rs_emg[rs_emg != 0])], 2))
+        # non_conv.append(nb_non_conv)
+        # all_iter_full.append(all_iter)
+        count += 1
 
-            before = ""
-            b_i = "" if cycle != -1 else r"\textbf{"
-            b_e = "" if cycle != -1 else r"}"
-            if d == 0 and opt is True:
-                before = f"{b_i}$Cal_{cycle}${b_e}"
-            elif d == 2 and opt is False:
-                before = "N/A"
-            dy_to_print = dy if opt is True else "N/A"
-
-            print(
-                prefix + before + f"&"
-                f" {b_i}{final_error[d, 0, c, 0]:0,.2f}{b_e} & {b_i}{final_error[d, 0, c, 1]:0,.2f}{b_e} & {b_i}{final_error[d, 0, c, 2]:0,.2f}{b_e} &"
-                f" {b_i}{final_error[d, 1, c, 0]:0,.2f}{b_e} & {b_i}{final_error[d, 1, c, 1]:0,.2f}{b_e} & {b_i}{final_error[d, 1, c, 2]:0,.2f}{b_e} &"
-                f" {b_i}{final_error[d, 3, c, 0]:0,.2f}{b_e} & {b_i}{final_error[d, 3, c, 1]:0,.2f}{b_e} & {b_i}{final_error[d, 3, c, 2]:0,.2f}{b_e} &"
-                f" {b_i}{final_error[d, 2, c, 0]:0,.2f}{b_e} & {b_i}{final_error[d, 2, c, 1]:0,.2f}{b_e} & "
-                f" {b_i}{all_freq[0, d, c]:0,.2f}{b_e} & {b_i}{all_freq[1, d, c]:0,.2f}{b_e}" + r"\\"
-            )
-
-            # all_mark_error.append(np.round([np.mean(rmse_mark[rmse_mark != 0]), np.mean(std_mark[std_mark != 0]), np.mean(rs_mark[rs_mark != 0])], 2))
-            # all_tau_error.append(np.round([np.mean(mean_tau[mean_tau != 0]), np.mean(std_tau[std_tau != 0])], 2))
-            # all_emg_error.append(np.round([np.mean(rmse_emg[rmse_emg != 0]), np.mean(std_emg[std_emg != 0]), np.mean(rs_emg[rs_emg != 0])], 2))
-            # non_conv.append(nb_non_conv)
-            # all_iter_full.append(all_iter)
-            count += 1
-
-    # print("MARKERS(mm) : ", "ID/optim:", all_mark_error[0], "FD/optim:", all_mark_error[1], "none:", all_mark_error[2], )
-    # print("Tau(N.m): ", "ID/optim:", all_tau_error[0], "FD/optim:", all_tau_error[1], "none:", all_tau_error[2])
-    # print("emg (%): ", "ID/optim:", all_emg_error[0], "FD/optim:", all_emg_error[1], "none:", all_emg_error[2])
-    # print("Non converged (%):", "ID", (non_conv[0] / all_iter_full[0]) * 100, "FD", (non_conv[1] / all_iter_full[1]) * 100,
-    #       "none", (non_conv[2] / all_iter_full[2]) * 100)
+# print("MARKERS(mm) : ", "ID/optim:", all_mark_error[0], "FD/optim:", all_mark_error[1], "none:", all_mark_error[2], )
+# print("Tau(N.m): ", "ID/optim:", all_tau_error[0], "FD/optim:", all_tau_error[1], "none:", all_tau_error[2])
+# print("emg (%): ", "ID/optim:", all_emg_error[0], "FD/optim:", all_emg_error[1], "none:", all_emg_error[2])
+# print("Non converged (%):", "ID", (non_conv[0] / all_iter_full[0]) * 100, "FD", (non_conv[1] / all_iter_full[1]) * 100,
+#       "none", (non_conv[2] / all_iter_full[2]) * 100)

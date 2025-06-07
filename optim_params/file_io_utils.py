@@ -8,8 +8,6 @@ try:
     from bioptim import SolutionMerge
 except:
     pass
-import matplotlib.pyplot as plt
-import bioviz
 
 
 def get_data_dict(
@@ -19,38 +17,46 @@ def get_data_dict(
     suffix = "_ocp" if not from_id else "_id"
     ocp_result = load(file_path)
     part = file_path.split("/")[6]
-    peaks = find_peaks(ocp_result["q" + suffix][-2, :], height=0.2, distance=100)[0]
+    peaks = find_peaks(ocp_result["q" + suffix][-2, :], height=0.2, distance=1)[0]
     end_idx = end_idx if end_idx is not None else ocp_result["q" + suffix].shape[1]
-    # model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
-    # model = model_dir + f"{part}/output_models/gear_20_model_scaled_dlc_technical_marker_params.bioMod"
-    # b = bioviz.Viz(model_path=model)
-    # b.load_movement(ocp_result["q" + suffix])
-    # b.load_experimental_markers(ocp_result["markers_target"][..., :2000])
-    # b.exec()
-    # plt.figure("q")
-    # for i in range(ocp_result["q" + suffix].shape[0]):
-    #     plt.subplot(4, 4, i + 1)
-    #     plt.plot(ocp_result["q" + suffix][i, :])
-    # plt.figure("q_dot")
-    # for i in range(ocp_result["q_dot" + suffix].shape[0]):
-    #     plt.subplot(4, 4, i + 1)
-    #     plt.plot(ocp_result["q_dot" + suffix][i, :])
-    # plt.figure("tau")
-    # for i in range(ocp_result["tau" + suffix].shape[0]):
-    #     plt.subplot(4, 4, i + 1)
-    #     plt.plot(ocp_result["tau" + suffix][i, :])
-    # plt.show()
+    idx_non_converged = np.argwhere(ocp_result["status"] != 0)
+    idx_non_converged = end_idx if idx_non_converged.shape[0] == 0 else idx_non_converged[0][-1]
+    end_idx = min(end_idx, idx_non_converged)
+    model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
+    model = model_dir + f"{part}/output_models/gear_20_model_scaled_dlc_technical_marker_params_static_root.bioMod"
+    #import bioviz
+    #b = bioviz.Viz(model_path=model)
+    #b.load_movement(ocp_result["q" + suffix])
+    #b.load_experimental_markers(ocp_result["markers_target"][..., :2000])
+    #b.exec()
     em_delay_frame = int(em_delay * rate)
-    if em_delay_frame != 0:
-        for key in ocp_result.keys():
-            if not isinstance(ocp_result[key], np.ndarray):
-                continue
-            if "q" in key or "q_dot" in key or "tau" in key or "f_ext" in key:
-                ocp_result[key] = ocp_result[key][:, em_delay_frame:end_idx]
-            if "emg" in key:
-                ocp_result[key] = (
-                    ocp_result[key][:, :-em_delay_frame] if em_delay != 0 else ocp_result[key][..., :end_idx]
-                )
+    for key in ocp_result.keys():
+        if not isinstance(ocp_result[key], np.ndarray):
+            continue
+        if "q" in key or "q_dot" in key or "tau" in key or "f_ext" in key:
+            ocp_result[key] = ocp_result[key][:, em_delay_frame:end_idx]
+        if "emg" in key:
+            ocp_result[key] = (
+                ocp_result[key][:, :end_idx] if em_delay != 0 else ocp_result[key][..., :end_idx]
+            )
+    #import matplotlib.pyplot as plt
+    #plt.figure("q")
+    #for i in range(ocp_result["q" + suffix].shape[0]):
+    #    plt.subplot(4, 4, i + 1)
+    #    plt.plot(ocp_result["q" + suffix][i, :])
+    #plt.figure("q_dot")
+    #for i in range(ocp_result["q_dot" + suffix].shape[0]):
+    #    plt.subplot(4, 4, i + 1)
+    #    plt.plot(ocp_result["q_dot" + suffix][i, :])
+    #plt.figure("tau")
+    #for i in range(ocp_result["tau" + suffix].shape[0]):
+    #    plt.subplot(4, 4, i + 1)
+    #    plt.plot(ocp_result["tau" + suffix][i, :])
+    #plt.show()
+    #for i in range(ocp_result["emg"].shape[0]):
+    #    plt.subplot(4, 10, i + 1)
+    #    plt.plot(ocp_result["emg"][i, :])
+    #plt.show()
     ocp_result = process_cycles(ocp_result, peaks, interpolation_size=cycle_size, remove_outliers=False)
     q, qdot, tau, f_ext, emg = (
         ocp_result["cycles"]["q" + suffix],
@@ -80,6 +86,20 @@ def get_experimental_data(file_path, n_start=0, n_stop=None, source="dlc_1", dow
     out_dict["q_init"] = data[source]["q"][:, n_start:n_stop][..., ::downsample]
     out_dict["q_dot_init"] = data[source]["q_dot"][:, n_start:n_stop][..., ::downsample]
     out_dict["emg"] = data["shared"]["emg"][:, n_start:n_stop][..., ::downsample]
+    #import matplotlib.pyplot as plt
+    #plt.figure("q")
+    #for i in range(out_dict["q_init"].shape[0]):
+    #   plt.subplot(4, 4, i + 1)
+    #   plt.plot(out_dict["q_init"][i, :])
+    #plt.figure("q_dot")
+    #for i in range(out_dict["q_dot_init"].shape[0]):
+    #   plt.subplot(4, 4, i + 1)
+    #   plt.plot(out_dict["q_dot_init"][i, :])
+    ##plt.figure("tau")
+    ##for i in range(out_dict["tau"].shape[0]):
+    ##   plt.subplot(4, 4, i + 1)
+    ##   plt.plot(out_dict["tau"][i, :])
+    #plt.show()
     # names = data[source]["marker_names"]
     # ia_idx = names.index("SCAP_IA")
     # ts_idx = names.index("SCAP_TS")
@@ -88,13 +108,13 @@ def get_experimental_data(file_path, n_start=0, n_stop=None, source="dlc_1", dow
     # data[source][f"markers"][:, ia_idx, :] = mark_ts
     # data[source][f"markers"][:, ts_idx, :] = mark_ia
     out_dict["markers_target"] = data[source][f"markers"][:, :, n_start:n_stop][..., ::downsample]
-    # import bioviz
-    # model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
-    # model = model_dir + f"/P11/output_models/gear_20_model_scaled_dlc_technical_marker_params.bioMod"
-    # b = bioviz.Viz(model_path=model)
-    # b.load_movement(out_dict["q_init"])
-    # b.load_experimental_markers(out_dict["markers_target"])
-    # b.exec()
+    #import bioviz
+    #model_dir = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/"
+    #model = model_dir + f"/P16/output_models/gear_5_model_scaled_dlc_technical_marker_params.bioMod"
+    #b = bioviz.Viz(model_path=model)
+    #b.load_movement(out_dict["q_init"])
+    #b.load_experimental_markers(out_dict["markers_target"])
+    #b.exec()
     return out_dict
 
 
@@ -131,4 +151,5 @@ def save_iteration(sol, file_path):
     dic_to_save["tau"] = merged_controls["tau"][..., 0:1]
     if "f_ext" in merged_controls.keys():
         dic_to_save["f_ext"] = merged_controls["f_ext"][..., 0:1]
+    dic_to_save["status"] = np.array([sol.status])[:, None]
     save(dic_to_save, file_path, add_data=True)

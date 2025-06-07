@@ -1,6 +1,7 @@
 """
 This code provide every function needed to solve the OCP problem.
 """
+from fontTools.merge.util import current_time
 
 import bioptim
 from .utils import *
@@ -100,7 +101,8 @@ def define_objective(
     objectives.add(
         ObjectiveFcn.Lagrange.MINIMIZE_STATE,
         weight=weights["min_q"],
-        index=np.array(range(16 - biorbd_model.nb_q, biorbd_model.nb_q)),
+        index=np.array(range(biorbd_model.nb_q - 10, biorbd_model.nb_q)),
+        #index=np.array(range(0, biorbd_model.nb_q)),
         key="q",
         node=Node.ALL,
         multi_thread=False,
@@ -109,7 +111,8 @@ def define_objective(
     objectives.add(
         ObjectiveFcn.Lagrange.MINIMIZE_STATE,
         weight=weights["min_dq"],
-        index=np.array(range(16 - biorbd_model.nb_q, biorbd_model.nb_q)),
+        #index=np.array(range(0, biorbd_model.nb_q)),
+        index=np.array(range(biorbd_model.nb_q - 10, biorbd_model.nb_q)),
         key="qdot",
         node=Node.ALL,
         multi_thread=False,
@@ -175,12 +178,21 @@ def define_objective(
     if use_torque:
         objectives.add(
             ObjectiveFcn.Lagrange.MINIMIZE_CONTROL,
-            index=np.array(range(16 - biorbd_model.nb_q, biorbd_model.nb_tau)),
+            index=np.array(range(biorbd_model.nb_q- 10, biorbd_model.nb_tau)),
             weight=weights["min_torque"],
             key="tau",
             multi_thread=False,
             quadratic=True,
         )
+        if biorbd_model.nb_q - 10 != 0:
+            objectives.add(
+                ObjectiveFcn.Lagrange.MINIMIZE_CONTROL,
+                index=np.array(range(0, biorbd_model.nb_q - 10 )),
+                weight=1,
+                key="tau",
+                multi_thread=False,
+                quadratic=True,
+            )
 
     kin_funct = ObjectiveFcn.Lagrange.TRACK_STATE if kin_data_to_track == "q" else ObjectiveFcn.Lagrange.TRACK_MARKERS
     if kin_data_to_track == "markers":
@@ -196,6 +208,28 @@ def define_objective(
         objectives.add(
             kin_funct, weight=weights["track_kin"], target=kin_target, key="q", node=Node.ALL, multi_thread=False
         )
+
+    # root
+    # objectives.add(
+    #     ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+    #     weight=1,
+    #     #index=np.array(range(16 - biorbd_model.nb_q, biorbd_model.nb_q)),
+    #     index=np.array(range(0, biorbd_model.nb_q - 10)),
+    #     key="q",
+    #     node=Node.ALL,
+    #     multi_thread=False,
+    #     quadratic=True,
+    # )
+    # objectives.add(
+    #     ObjectiveFcn.Lagrange.MINIMIZE_STATE,
+    #     weight=10,
+    #     #index=np.array(range(0, biorbd_model.nb_q)),
+    #     index=np.array(range(0, biorbd_model.nb_q- 10)),
+    #     key="qdot",
+    #     node=Node.ALL,
+    #     multi_thread=False,
+    #     quadratic=True,
+    # )
     return objectives
 
 
@@ -352,7 +386,7 @@ def prepare_problem(
     biorbd_model = BiorbdModel(model_path)
     nbGT = biorbd_model.nb_tau if use_torque else 0
     tau_min, tau_max, tau_init = -10000, 10000, 0
-    muscle_min, muscle_max, muscle_init = 0, 1, 0.1
+    muscle_min, muscle_max, muscle_init = 0, 1, 0.2
     if with_f_ext and f_ext_as_constraints:
         f_ext_min, f_ext_max, f_ext_init = f_ext_0, f_ext_0, f_ext_0
     elif with_f_ext and f_ext_as_constraints is False:
@@ -368,7 +402,7 @@ def prepare_problem(
         with_f_ext=with_f_ext,
         external_forces_object=f_ext_object,
         with_residual_torque=True,
-        # expand=False,
+        #expand=True,
     )
 
     # State path constraint
@@ -475,17 +509,58 @@ def configure_weights():
     #     "f_ext": 1000000,
     # }
 
+    # w initial
+    #weights = {
+    #    "min_dq": 100,
+    #    "min_q": 10,
+    #    "min_torque": 1000,
+    #    "min_activation": 10,
+    #    "min_tracked_activation": 10,
+    #    "track_emg": 1000000,
+    #    "previous_q": 100,
+    #    "previous_q_dot": 100,
+    #    "track_kin": 1000000000000,
+    #    "f_ext": 10000000,
+    #}
+
+    # w2
     weights = {
-        "min_dq": 10,
-        "min_q": 1,
+        "min_dq": 100,
+        "min_q": 10,
         "min_torque": 100,
-        "min_activation": 500,
+        "min_activation": 10,
         "min_tracked_activation": 10,
         "track_emg": 10000000,
-        "previous_q": 100,
-        "previous_q_dot": 100,
-        "track_kin": 1000000000,
+        "previous_q": 10,
+        "previous_q_dot": 10,
+        "track_kin": 100000000000,
         "f_ext": 10000000,
+    }
+    # w3
+    weights = {
+        "min_dq": 100,
+        "min_q": 10,
+        "min_torque": 10000,
+        "min_activation": 100,
+        "min_tracked_activation": 10,
+        "track_emg": 10000000,
+        "previous_q": 10,
+        "previous_q_dot": 10,
+        "track_kin": 10000000000,
+        "f_ext": 10000000,
+    }
+    # w4
+    weights = {
+        "min_dq": 1000,
+        "min_q": 10,
+        "min_torque": 10000,
+        "min_activation": 1000,
+        "min_tracked_activation": 10,
+        "track_emg": 10000000,
+        "previous_q": 10,
+        "previous_q_dot": 100000,
+        "track_kin": 100000000000,
+        "f_ext": 100000,
     }
 
     # tmhe 0.09
@@ -553,7 +628,7 @@ def get_target(
     muscles_ref = muscles_ref if track_emg is True else np.zeros((nbMT, ns_mhe))
     q_target_idx, markers_target_idx, muscles_target_idx, f_ext_target_idx = [], [], [], []
     if sol:
-        previous_sol = np.zeros((nbQ * 2, ns_mhe + 1))
+        previous_sol = np.empty((nbQ * 2, ns_mhe + 1))
         states = sol.decision_states(to_merge=SolutionMerge.NODES)
         previous_sol[:nbQ, :] = np.concatenate(
             (states["q"][:, slide_size:], np.repeat(states["q"][:, -1:], slide_size, axis=1)), axis=1
@@ -642,13 +717,20 @@ def update_mhe(mhe, t: int, sol: bioptim.Solution, ei, initial_time: float):
     else : True if there are still target available, False otherwise
     """
     tic = time()
-    slide_size = ei.slide_size
+    ei.slide_size = ei.slide_size #if t < 2 else int(((ei.markers_rate * ei.interpol_factor) / (1/(ei.total_time_to_solve / t-1))))
     ns_mhe = ei.ns_mhe
+    # ei.slide_size = 1
+    mhe.slide_size = ei.slide_size
 
     x_ref_to_save = [] if mhe.x_ref is None else mhe.x_ref.copy()
     muscles_target_to_save = mhe.muscles_ref if mhe.muscles_ref is not None else []
     kin_target_to_save = mhe.kin_target if mhe.kin_target is not None else []
     f_ext_ref_to_save = mhe.f_ext_ref if mhe.f_ext_ref is not None else []
+    if ei.save_results and not ei.save_all_frame and mhe.sol is not None:
+        data_to_save = [x_ref_to_save, muscles_target_to_save, kin_target_to_save, f_ext_ref_to_save]
+        for d, data in enumerate(data_to_save):
+            data_to_save[d] = data[..., ei.frame_to_save][..., None]
+        x_ref_to_save, muscles_target_to_save, kin_target_to_save, f_ext_ref_to_save = data_to_save[0], data_to_save[1], data_to_save[2], data_to_save[3]
     if t == 0:
         x_init = {}
         for key in mhe.nlp[0].x_init.keys():
@@ -675,10 +757,10 @@ def update_mhe(mhe, t: int, sol: bioptim.Solution, ei, initial_time: float):
     # f_ext_ref = f_ext_ref[:, : ns_mhe]
     # markers_ref = markers_ref[:, :, : ns_mhe + 1]
     # x_ref = x_ref[:, : ns_mhe + 1]
-    markers_ref = ei.markers_target[:, :, slide_size * t : slide_size * t + ns_mhe + 1].copy()
-    x_ref = ei.x_ref[:, slide_size * t : slide_size * t + ns_mhe + 1].copy()
-    muscles_ref = ei.muscles_target[:, slide_size * t : slide_size * t + ns_mhe + 1][..., :-1].copy()
-    f_ext_ref = ei.f_ext_target[:, slide_size * t : slide_size * t + ns_mhe + 1][..., :-1].copy()
+    markers_ref = ei.markers_target[:, :, ei.slide_size * t : ei.slide_size * t + ns_mhe + 1].copy()
+    x_ref = ei.x_ref[:, ei.slide_size * t : ei.slide_size * t + ns_mhe + 1].copy()
+    muscles_ref = ei.muscles_target[:, ei.slide_size * t : ei.slide_size * t + ns_mhe + 1][..., :-1].copy()
+    f_ext_ref = ei.f_ext_target[:, ei.slide_size * t : ei.slide_size * t + ns_mhe + 1][..., :-1].copy()
     tic = time()
     mhe = get_target(
         mhe=mhe,
@@ -707,10 +789,26 @@ def update_mhe(mhe, t: int, sol: bioptim.Solution, ei, initial_time: float):
             slide_size=ei.slide_size,
             save_all_frame=ei.save_all_frame,
         )
+        ei.slide_size = tmp_slide_size
         time_to_get_data = time() - tic
         time_to_solve = sol.real_time_to_optimize
         # time_tot = time_to_solve + time_to_get_data
         time_tot = time_to_solve
+       #ei.total_time_to_solve += time_to_solve
+       #print(ei.total_time_to_solve)
+       #current_time_to_solve = ei.total_time_to_solve / t
+        if ei.print_lvl == 1:
+            if t % 500 == 0:
+                print(
+                    "solver status : ",
+                    stat,
+                    "\n" f"Solve Frequency : {1 / time_to_solve} \n" f"Expected Frequency : {ei.exp_freq}\n",
+                    f"trial: {ei.result_dir[-3:]} - {ei.result_file_name.split('_')[2:4]}",
+                    f"Iteration number : {t}",
+                    f"slide_size: {ei.slide_size}",
+                    # f"time to sleep: {(1 / ei.exp_freq) - time_tot}\n"
+                    # f"time to get data = {time_to_get_data}"
+                )
 
         if ei.save_results:
             dic_to_save = {
@@ -730,24 +828,16 @@ def update_mhe(mhe, t: int, sol: bioptim.Solution, ei, initial_time: float):
                 "f_ext_ref": f_ext_ref_to_save,
                 "n_mhe": ei.ns_mhe,
                 "sol_freq": 1 / time_tot,
-                "sleep_time": (1 / ei.exp_freq) - time_tot,
+                #"sleep_time": (1 / ei.exp_freq) - time_tot,
                 "kin_target": kin_target_to_save,
                 "exp_freq": ei.exp_freq,
                 "frame_to_export": ei.frame_to_save,
                 "save_all_frame": ei.save_all_frame,
                 "slide_size": ei.slide_size,
-                "muscle_track_idx": ei.muscle_track_idx,
+                "muscle_track_idx": np.array(ei.muscle_track_idx)[:, None],
             }
             data_path = ei.result_dir + os.sep + ei.result_file_name
             save(dic_to_save, data_path, add_data=True)
-            if ei.print_lvl == 1:
-                print(
-                    "solver status : ",
-                    stat,
-                    "\n" f"Solve Frequency : {1 / time_tot} \n" f"Expected Frequency : {ei.exp_freq}\n",
-                    # f"time to sleep: {(1 / ei.exp_freq) - time_tot}\n"
-                    # f"time to get data = {time_to_get_data}"
-                )
             x_init = {}
             for key in mhe.nlp[0].x_init.keys():
                 x_init[key] = mhe.nlp[0].x_init[key].init[:, :]
@@ -759,25 +849,28 @@ def update_mhe(mhe, t: int, sol: bioptim.Solution, ei, initial_time: float):
 
         current_time = time() - tic
         time_tot = time_to_solve + current_time
-        if 1 / time_tot > ei.exp_freq:
-            sleep((1 / ei.exp_freq) - time_tot)
-        ei.slide_size = tmp_slide_size
+        #if 1 / time_tot > ei.exp_freq:
+        #    sleep((1 / ei.exp_freq) - time_tot)
 
-    if t == 200:
-        # plt.figure("n")
-        # plt.plot()
-        # plt.show()
+    if t >= 5000: #10500:
         return False
-    else:
-        return True
-    # try:
-    #     if mhe.kin_target.shape[2] > ei.ns_mhe:
-    #         return True
-    # except:
-    #     if mhe.kin_target.shape[1] > ei.ns_mhe:
-    #         return True
-    # else:
+
+
+    try:
+        if mhe.kin_target.shape[-1] > ei.ns_mhe:
+            return True
+        else:
+            return False
+    except:
+        return False
+    # if t == 800:
+    #     # plt.figure("n")
+    #     # plt.plot()
+    #     # plt.show()
     #     return False
+    # else:
+    #     return True
+
 
 
 class CustomMhe(MovingHorizonEstimator):
@@ -826,19 +919,21 @@ class CustomMhe(MovingHorizonEstimator):
     def advance_window_initial_guess_controls(self, sol, **advance_options):
         controls = sol.decision_controls(to_merge=SolutionMerge.NODES)
         for key in self.nlp[0].u_init.keys():
-            self.nlp[0].controls.node_index = 0
-            if self.nlp[0].u_init[key].type != InterpolationType.EACH_FRAME:
-                # Override the previous u_init
-                self.nlp[0].u_init.add(
-                    key,
-                    np.ndarray((controls[key].shape[0], self.nlp[0].n_controls_nodes)),
-                    interpolation=InterpolationType.EACH_FRAME,
-                    phase=0,
-                )
-                self.nlp[0].u_init[key].check_and_adjust_dimensions(
-                    len(self.nlp[0].controls[key]), self.nlp[0].n_controls_nodes - 1
-                )
-
+            #self.nlp[0].controls.node_index = 0
+            # if self.nlp[0].u_init[key].type != InterpolationType.EACH_FRAME:
+            #     # Override the previous u_init
+            #     self.nlp[0].u_init.add(
+            #         key,
+            #         np.ndarray((controls[key].shape[0], self.nlp[0].n_controls_nodes)),
+            #         interpolation=InterpolationType.EACH_FRAME,
+            #         phase=0,
+            #     )
+            #     self.nlp[0].u_init[key].check_and_adjust_dimensions(
+            #         len(self.nlp[0].controls[key]), self.nlp[0].n_controls_nodes - 1
+            #     )
+            if self.nlp[0].u_init[key].type.value == 0:
+                self.nlp[0].u_init[key].init[:, :] = controls[key][:, self.slide_size][:, None]
+                return True
             self.nlp[0].u_init[key].init[:, :] = np.concatenate(
                 (
                     controls[key][:, self.slide_size :],

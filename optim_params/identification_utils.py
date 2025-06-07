@@ -15,10 +15,12 @@ def get_all_muscle_len(model, q):
 
 
 def generate_random_idx(n_cycles, batch, n_data):
-    random.seed(100)
-    combinations = list(itertools.combinations(list(range(5, int(n_data - 5))), n_cycles))
+    #random.seed(1000)
+    combinations = list(itertools.combinations(list(range(1, int(n_data - 1))), n_cycles))
     random_idx = random.sample(range(0, len(combinations)), batch)
+    #return [[8, 9, 7], [18, 39, 72], [30, 42, 75], [7, 8, 9]]
     return [list(combinations[i]) for i in random_idx]
+
 
 
 def _get_characteristics(muscle, name, use_mx=True):

@@ -215,7 +215,11 @@ def get_data(ip=None, port=None, message=None, offline=False, offline_file_path=
 
 def apply_params(model, file_path=None, params=None, optimized_params=None, with_casadi=True, ratio=True):
     if file_path:
-        data = load(file_path, merge=False)[0]  # [4]
+        data = load(file_path, merge=False)
+        for i in range(len(data)):
+            if data[i]["solver_out"]["status"]:
+                data = data[i]
+                break
         param_list = data["p"]
         params_to_optim = data["optimized_params"]
     elif params is not None:
@@ -319,25 +323,27 @@ def load_data(
         coef = int(data[source]["q"].shape[0] - model.nbQ())
     else:
         coef = 0
-    x_ref = np.concatenate((data[source]["q"][coef:, :], data[source]["q_dot"][coef:, :]), axis=0)
+    x_ref = np.concatenate((data[source]["q"][-model.nbQ():, :], data[source]["q_dot"][-model.nbQ():, :]), axis=0)
     n_final = n_final if n_final is not None else x_ref.shape[1]
     x_ref = x_ref[:, n_init:n_final]
     markers_target = markers[:, :, n_init:n_final]
     muscles_target = muscles_target[:, n_init:n_final]
     f_ext = f_ext[:, n_init:n_final]
     offline_data = [x_ref.copy(), markers_target.copy(), muscles_target.copy(), f_ext.copy()]
-    x_ref, markers_target, muscles_target, f_ext = interpolate_data(
-        interp_factor,
-        x_ref,
-        muscles_target,
-        markers_target,
-        f_ext,
-    )
-    # import bioviz
-    # b = bioviz.Viz(loaded_model=model)
-    # b.load_movement(x_ref[:model.nbQ(), :])
-    # b.load_experimental_markers(markers_target)
-    # b.exec()
+    if interp_factor != 1:
+        x_ref, markers_target, muscles_target, f_ext = interpolate_data(
+            interp_factor,
+            x_ref,
+            muscles_target,
+            markers_target,
+            f_ext,
+        )
+
+    #import bioviz
+    #b = bioviz.Viz(loaded_model=model)
+    #b.load_movement(x_ref[:model.nbQ(), :])
+    #b.load_experimental_markers(markers_target)
+    #b.exec()
     return offline_data, markers_target, names_from_source, f_ext, muscles_target, x_ref
 
 

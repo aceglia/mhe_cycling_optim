@@ -17,12 +17,13 @@ def plot_results(data_path, model, key_to_plot, key_target=None, optim_param_pat
             if key == "kin_target" and len(dic_merged[key].shape) == 3:
                 dic_merged[key] = np.swapaxes(dic_merged[key], 0, 1)
     kin = np.concatenate((dic_merged["q_est"], dic_merged["dq_est"]), axis=0)
-    # import bioviz
-    # b = bioviz.Viz(model)
-    # b.load_movement(dic_merged["q_est"])
-    # b.load_experimental_markers(dic_merged["kin_target"])
-    # b.exec()
     biomodel = biorbd.Model(model)
+    import bioviz
+    b = bioviz.Viz(model)
+    b.load_movement(dic_merged["x_ref"][: biomodel.nbQ(), :])
+    b.load_experimental_markers(dic_merged["kin_target"])
+    b.exec()
+
     dic_merged["dq_ref"] = dic_merged["x_ref"][biomodel.nbQ() : biomodel.nbQ() * 2, :]
     dic_merged["q_ref"] = dic_merged["x_ref"][: biomodel.nbQ(), :]
 
@@ -46,6 +47,8 @@ def plot_results(data_path, model, key_to_plot, key_target=None, optim_param_pat
             plt.plot(data_tmp[i, :], color=color)
             if target is not None:
                 plot_target(i, key_target[k], target, muscle_idx)
+            if key == "u_est":
+                plt.title(biomodel.muscleNames()[i].to_string())
 
 
 def plot_target(i, key_target, target, idx_muscle):
@@ -113,10 +116,9 @@ def get_id_torque(q, q_dot, model=None, f_ext=None, rate=60):
 
 
 if __name__ == "__main__":
-    part = "P10"
-    participants = ["P10"]  # , "P11", "P13", "P14"]
-    trials = ["gear_20"]
-    cycle = 5
+    part = "P11" # , "P11", "P13", "P14"]
+    trials = ["gear_5"]
+    cycle = 3
     result_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/results"
     for trial in trials:
         suffix = "test_quad"
@@ -128,10 +130,10 @@ if __name__ == "__main__":
         all_dir = os.listdir(file_dir)
         trial_dir = [dir for dir in all_dir if trial in dir and "result" not in dir][0]
         mhe_file = None
-        key_to_plot = ["q_est", "dq_est", "u_est", "tau_est", "f_ext", "muscle_force"]
-        key_ref = ["q_ref", "dq_ref", "muscles_target", None, "f_ext_ref", None]
-        data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_False_track_markers.bio"
-        plot_results(data_path, model, key_to_plot, key_ref, color="b")
+        key_to_plot = ["q_est", "dq_est", "u_est", "tau_est", "f_ext", "muscle_force", "mus_tau"]
+        key_ref = ["q_ref", "dq_ref", "muscles_target", None, "f_ext_ref", None, None]
+        #data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_False_track_markers.bio"
+        #plot_results(data_path, model, key_to_plot, key_ref, color="b")
         data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_True_track_markers.bio"
         plot_results(data_path, model, key_to_plot, key_ref, color="g")
         plt.show()

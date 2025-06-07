@@ -525,8 +525,8 @@ def plot_cycles(
 
 if __name__ == "__main__":
     part = "P10"
-    participants = ["P10"]  # , "P11", "P13", "P14"]
-    trials = ["gear_20"]
+    participants = ["P11"]  # , "P11", "P13", "P14"]
+    trials = ["gear_5"]
     cycle = 5
     result_dir = "/mnt/shared/Projet_hand_bike_markerless/optim_params/results"
     for trial in trials:
@@ -554,7 +554,7 @@ if __name__ == "__main__":
         # plot_all_window(data_path, n_windows=None, plot_by_windows=False, line_style="--", color = "k", model_path=model)
         # plt.show()
         if part != "P16":
-            data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_False_track_q.bio"
+            data_path = result_dir + f"/{part}/result_mhe_{trial}_dlc_1_optim_param_False_track_markers_test.bio"
             plot_cycles(
                 model, data_path, optim_param_path=None, color="b", mhe_file=mhe_file, compare_to_fd=False, cycles=False
             )

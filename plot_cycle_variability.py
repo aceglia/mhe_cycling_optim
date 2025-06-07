@@ -186,9 +186,9 @@ if __name__ == "__main__":
         "LatissimusDorsi_I",  # 18
         "PectoralisMajorThorax_I",  # 19
         "PectoralisMajorThorax_M",  # 19
-        # "BRD",
-        # "PT",
-        # "PQ"
+        "BRD",
+        "PT",
+        "PQ"
         "TRI_long",  # 20
         "TRI_lat",  # 20
         "TRI_med",  # 20
@@ -235,23 +235,23 @@ if __name__ == "__main__":
         # 'BIC_long',  # 21
         # "'BIC_brevis',
     ]  # 21
-    # muscle_to_plot = muscle_names
+    muscle_to_plot = muscle_names
 
-    participants = [f"P{i}" for i in range(10, 15)]
-    if "P12" in participants:
-        participants.pop(participants.index("P12"))
+    participants = [f"P{i}" for i in range(10, 17)]
+    #if "P12" in participants:
+    #    participants.pop(participants.index("P12"))
     # participants = ["P10", "P11"]
     trials = ["gear_20"]
     nodes = [
+        5,
         1,
         2,
         3,
         4,
         5,
-        6,
     ]
 
-    n_batch = 10
+    n_batch = 5
     pd_p_iso = pd.DataFrame()
     pd_p_iso["muscles"] = sum(
         [[muscle_names[i]] * n_batch * len(participants) for i in range(len(muscle_names))], []
@@ -274,13 +274,21 @@ if __name__ == "__main__":
     for p, part in enumerate(participants):
         for t, node in enumerate(nodes):
             param_path = f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{node}_test_quad.bio"
-            data_tmp = load(param_path, merge=False)
+            param_path = f"/mnt/shared/Projet_hand_bike_markerless/optim_params/results_2025-01-31_10-00/{part}/gear_20_n_cycles_{node}.bio"
+            data_tmp_before_filter = load(param_path, merge=False)
 
             # os.remove(f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{node}_test_quad.bio")
             # for i in range(7):
             #     save(add_data=True, data_dict=data_tmp[i], data_path=f"/mnt/shared/Projet_hand_bike_markerless/RGBD/{part}/result_optim_param_gear_20_fd_{node}_test_quad.bio")
 
             n_batch_tmp = n_batch
+            data_tmp = data_tmp_before_filter
+            # check for non converged cycle
+            for i in range(len(data_tmp_before_filter)):
+                if not data_tmp_before_filter[i]["solver_out"]["status"]:
+                    # fill with nan
+                    data_tmp[i]["p"] = np.array([[np.nan] * len(muscle_names), [np.nan] * len(muscle_names)]).reshape(2, -1)
+
             p_iso = []
             _ = [p_iso.append(np.array(data_tmp[i]["p"][0]).tolist()) for i in range(n_batch_tmp)]
             final_list_p = []

@@ -115,9 +115,10 @@ class MuscleForceEstimator:
         self.T_mhe = self.mhe_time
         self.n_before_interpolate = int(self.T_mhe * self.markers_rate)
         self.ns_mhe = int(self.T_mhe * self.markers_rate * self.interpol_factor)
-        # self.slide_size = int(((self.markers_rate * self.interpol_factor) / self.exp_freq))
-        self.slide_size = 1
+        self.slide_size = int(((self.markers_rate * self.interpol_factor) / self.exp_freq))
+        #self.slide_size = 1
         self.nbQ, self.nbMT = biorbd_model.nb_q, biorbd_model.nb_muscles
+        self.total_time_to_solve = 0
         self.nbGT = biorbd_model.nb_tau if self.use_torque else 0
         self.current_time = strftime("%Y%m%d-%H%M")
         self.data_to_get = []
@@ -234,11 +235,7 @@ class MuscleForceEstimator:
         self.kin_target = self.markers_target if self.kin_data_to_track == "markers" else self.x_ref[: self.nbQ, :]
 
         muscle_init = np.ones((self.biorbd_model.nb_muscles, self.ns_mhe)) * 0.1
-        if self.track_emg:
-            count = 0
-            for i in self.muscle_track_idx:
-                muscle_init[i, :] = self.muscles_target[count, : self.ns_mhe]
-                count += 1
+        muscle_init[self.muscle_track_idx, :] = self.muscles_target[:, : self.ns_mhe]
 
         objectives = define_objective(
             weights=self.weights,
@@ -411,10 +408,10 @@ class MuscleForceEstimator:
 def _remove_root_dofs(model_path):
     with open(model_path, "r") as file:
         data = file.read()
-    # data = data.replace(
-    #     "rotations xyz // thorax",
-    #     f"//rotations xyz // thorax",
-    # )
+    data = data.replace(
+        "rotations xyz // thorax",
+        f"//rotations xyz // thorax",
+    )
     data = data.replace(
         "translations xyz // thorax",
         f"// translations xyz // thorax",
@@ -435,21 +432,20 @@ if __name__ == "__main__":
         prefix = "/mnt/shared"
     else:
         prefix = "Q:/"
-    participants = [f"P{i}" for i in range(11, 12)]
+    participants = [f"P{i}" for i in range(10, 17)]
     # participants.pop(participants.index("P12"))
     # participants.pop(participants.index("P15"))
     # participants.pop(participants.index("P16"))
     # participants = ["P10"]
-    # init_trials = [["gear_5", "gear_10", "gear_15", "gear_20"]] * len(participants)
-    init_trials = [["gear_20"]] * len(participants)
+    init_trials = [["gear_5", "gear_10", "gear_15", "gear_20"]] * len(participants)
+    #init_trials = [["gear_20"]] * len(participants)
 
     processed_source = ["dlc_1"]
     processed_data_path = prefix + "/Projet_hand_bike_markerless/RGBD"
     configs = [0.08]
     exp_freq = [30]
-    dlc_model = "normal_500_down_b1"
     use_optim_params = [True, False]  # , False]
-    dyn = ["fd"]
+    dyn = ["1", "2", "3", "4"] #, "5"]
     # for c, config in enumerate(configs):
     # c = True
     for p, part in enumerate(participants):
@@ -461,15 +457,13 @@ if __name__ == "__main__":
             for c in use_optim_params:
                 dyn_tmp = [""] if c is False else dyn
                 for dy in dyn_tmp:
-                    suffix = "_id" if dy == "id" else ""
-                    parameters_file_path = f"/mnt/shared/Projet_hand_bike_markerless/optim_params/results_2025-01-15_11-26/P10/{trial_short}_n_cycles_3.bio"
-                    if_dyn = f"_{dy}" if dy != "" else ""
-                    result_file_name = f"result_mhe_{trial}_{processed_source[0]}_optim_param_{c}_track_markers.bio"
+                    parameters_file_path = f"/mnt/shared/Projet_hand_bike_markerless/optim_params/results_2025-02-07_23-51/{part}/gear_20_n_cycles_{dy}.bio"
+                    result_file_name = f"result_mhe_{trial}_optim_param_{c}_cycle_{dy}_mhe_0_08_int_1_w4.bio"
                     mhe_result_filename = result_dir + os.sep + result_file_name
                     print("working on", part, dy, trial, c)
                     # dir = os.listdir(processed_data_path + f"/{part}")
                     # dir = [d for d in dir if trial in d][0]
-                    data = data_dir + f"/{part}/" + f"result_biomech_{trial_short}_with_technical_marker_params.bio"
+                    data = data_dir + f"/{part}/" + f"result_biomech_{trial_short}_with_technical_marker_final_data_parameter_identification.bio"
                     # offline_path = data_dir + f"{trial[p]}"
                     if not os.path.isdir(result_dir):
                         os.makedirs(result_dir)
@@ -484,7 +478,7 @@ if __name__ == "__main__":
                     # }
                     if os.path.isfile(mhe_result_filename):
                         os.remove(mhe_result_filename)
-                    model = f"{model_dir}/{trial}_model_scaled_dlc_technical_marker_params.bioMod"
+                    model = f"{model_dir}/{trial}_model_scaled_dlc_technical_marker_params_static_root_new_bounds.bioMod"
                     model = _remove_root_dofs(model)
                     emg_name = [
                         "PectoralisMajorThorax",
@@ -519,7 +513,7 @@ if __name__ == "__main__":
                         "solver_options": solver_options,
                         "weights": configure_weights(),
                         "frame_to_save": 0,
-                        "save_all_frame": True,
+                        "save_all_frame": False,
                         "part": part,
                         "use_acados": True,
                         "use_optim_params": c,
@@ -534,10 +528,9 @@ if __name__ == "__main__":
                         "emg_names": emg_name,
                     }
                     variables_dic = {"print_lvl": 1}  # print level 0 = no print, 1 = print information
-                    # try:
-                    MHE = MuscleForceEstimator(configuration_dic)
-                    MHE.run_mhe(variables_dic, [])
-                    # except Exception as e:
-                    #     print(e)
-                    #     print("warning")
+                    try:
+                        MHE = MuscleForceEstimator(configuration_dic)
+                        MHE.run_mhe(variables_dic, [])
+                    except Exception as e:
+                        print(e)
                 # break
